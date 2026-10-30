@@ -19,31 +19,45 @@ export interface ExerciseInfo {
 
 export type DemoClip = 'squat' | 'pushup' | 'jumping-jacks' | 'jog' | 'burpee' | 'stretch' | 'curl' | 'shoulder-press' | 'row' | 'core' | 'glute-bridge';
 export type GymProp = 'dumbbells' | 'barbell' | 'mat';
+export type MuscleKey = 'chest' | 'back' | 'delts' | 'biceps' | 'triceps' | 'forearms' | 'abs' | 'glutes' | 'quads' | 'hamstrings' | 'calves';
+export const MUSCLE_KEYS: MuscleKey[] = ['chest', 'back', 'delts', 'biceps', 'triceps', 'forearms', 'abs', 'glutes', 'quads', 'hamstrings', 'calves'];
+export const MUSCLE_NAMES: Record<MuscleKey, string> = {
+  chest: 'Chest', back: 'Upper back & lats', delts: 'Shoulders', biceps: 'Biceps', triceps: 'Triceps', forearms: 'Forearms',
+  abs: 'Abs & obliques', glutes: 'Glutes', quads: 'Quads', hamstrings: 'Hamstrings', calves: 'Calves',
+};
+/** muscle → intensity (1 = primary mover) */
+export type MuscleMap = Partial<Record<MuscleKey, number>>;
 
 /** Body Lab demos available: Mixamo clips in public/models/anims, plus the hand-animated ones in BodyModel. */
 export const READY_CLIPS = new Set<DemoClip>(['squat', 'pushup', 'jumping-jacks', 'jog', 'burpee', 'stretch',
   'curl', 'shoulder-press', 'row', 'core', 'glute-bridge']);
 
 /** One 3D demo per workout focus, with the equipment it uses. */
-export const FOCUS_DEMOS: Record<Muscle, { clip: DemoClip; props: GymProp[]; label: string }> = {
-  Chest: { clip: 'pushup', props: ['mat'], label: 'Push-ups' },
-  Back: { clip: 'row', props: ['barbell'], label: 'Bent-over row' },
-  Shoulders: { clip: 'shoulder-press', props: ['dumbbells'], label: 'Shoulder press' },
-  Arms: { clip: 'curl', props: ['dumbbells'], label: 'Bicep curl' },
-  Core: { clip: 'core', props: ['mat'], label: 'Crunches' },
-  Glutes: { clip: 'glute-bridge', props: ['mat'], label: 'Glute bridge' },
-  Legs: { clip: 'squat', props: [], label: 'Squats' },
-  'Full body': { clip: 'burpee', props: [], label: 'Burpees' },
-  Cardio: { clip: 'jumping-jacks', props: [], label: 'Jumping jacks' },
+export interface Demo { clip: DemoClip; props: GymProp[]; label: string; exercise: string; muscles: MuscleMap }
+/** One 3D demo per muscle group: the exercise it shows, its equipment, and the muscles it works (1 = primary). */
+export const FOCUS_DEMOS: Record<Muscle, Demo> = {
+  Chest: { clip: 'pushup', props: ['mat'], label: 'Push-ups', exercise: 'push-ups', muscles: { chest: 1, triceps: 0.65, delts: 0.5, abs: 0.35 } },
+  Back: { clip: 'row', props: ['barbell'], label: 'Bent-over row', exercise: 'bent-over-row', muscles: { back: 1, biceps: 0.6, delts: 0.45, forearms: 0.35, hamstrings: 0.25 } },
+  Shoulders: { clip: 'shoulder-press', props: ['dumbbells'], label: 'Shoulder press', exercise: 'shoulder-press', muscles: { delts: 1, triceps: 0.6 } },
+  Arms: { clip: 'curl', props: ['dumbbells'], label: 'Bicep curl', exercise: 'bicep-curl', muscles: { biceps: 1, forearms: 0.55 } },
+  Core: { clip: 'core', props: ['mat'], label: 'Crunches', exercise: 'crunches', muscles: { abs: 1 } },
+  Glutes: { clip: 'glute-bridge', props: ['mat'], label: 'Glute bridge', exercise: 'glute-bridge', muscles: { glutes: 1, hamstrings: 0.6, abs: 0.25 } },
+  Legs: { clip: 'squat', props: [], label: 'Bodyweight squats', exercise: 'bodyweight-squats', muscles: { quads: 1, glutes: 0.8, hamstrings: 0.4, calves: 0.3, abs: 0.25 } },
+  'Full body': { clip: 'burpee', props: [], label: 'Burpees', exercise: 'burpees', muscles: { quads: 0.85, chest: 0.75, glutes: 0.65, delts: 0.6, triceps: 0.55, abs: 0.55, calves: 0.4 } },
+  Cardio: { clip: 'jumping-jacks', props: [], label: 'Jumping jacks', exercise: 'jumping-jacks', muscles: { calves: 0.9, delts: 0.7, quads: 0.55, glutes: 0.45 } },
 };
-const PROPS_FOR: Partial<Record<DemoClip, GymProp[]>> = Object.fromEntries(Object.values(FOCUS_DEMOS).map((f) => [f.clip, f.props]));
 
-/** The demo for an exercise: its own clip, else its main focus's; null when that clip isn't available yet. */
-export function demoFor(ex: ExerciseInfo): { clip: DemoClip; props: GymProp[]; focus?: Muscle } | null {
-  if (ex.demo && READY_CLIPS.has(ex.demo)) return { clip: ex.demo, props: PROPS_FOR[ex.demo] ?? [] };
-  const focus = ex.muscles.find((m) => READY_CLIPS.has(FOCUS_DEMOS[m].clip));
-  return focus ? { clip: FOCUS_DEMOS[focus].clip, props: FOCUS_DEMOS[focus].props, focus } : null;
+/** The demo for an exercise: only the exercise a demo actually shows has one. */
+export function demoFor(ex: ExerciseInfo): (Demo & { focus: Muscle }) | null {
+  const hit = (Object.entries(FOCUS_DEMOS) as [Muscle, Demo][]).find(([, d]) => d.exercise === ex.id && READY_CLIPS.has(d.clip));
+  return hit ? { ...hit[1], focus: hit[0] } : null;
 }
+
+/** Primary (≥ 0.9) and secondary muscles of a demo, for its legend. */
+export const workedMuscles = (m: MuscleMap) => {
+  const list = (Object.entries(m) as [MuscleKey, number][]).sort((a, b) => b[1] - a[1]);
+  return { primary: list.filter(([, v]) => v >= 0.9).map(([k]) => MUSCLE_NAMES[k]), secondary: list.filter(([, v]) => v < 0.9).map(([k]) => MUSCLE_NAMES[k]) };
+};
 
 export const MUSCLES: Muscle[] = ['Chest', 'Back', 'Shoulders', 'Arms', 'Core', 'Glutes', 'Legs', 'Full body', 'Cardio'];
 
@@ -57,28 +71,31 @@ export const EXERCISES: ExerciseInfo[] = [
   { id: 'push-ups', name: 'Push-ups', aliases: ['Push-up', 'Pushups'], muscles: ['Chest', 'Arms', 'Core'], equipment: 'Bodyweight', log: 'reps', demo: 'pushup',
     steps: ['Hands a little wider than shoulders, body in a straight line.', 'Lower your chest to just above the floor.', 'Push the floor away until the arms are straight.'],
     tip: "Squeeze glutes and abs so the hips don't sag." },
-  { id: 'knee-push-ups', name: 'Knee push-ups', muscles: ['Chest', 'Arms'], equipment: 'Bodyweight', log: 'reps', demo: 'pushup',
+  { id: 'knee-push-ups', name: 'Knee push-ups', muscles: ['Chest', 'Arms'], equipment: 'Bodyweight', log: 'reps',
     steps: ['Kneel with hands under the shoulders.', 'Keep a straight line from knees to head.', 'Lower the chest, then press back up.'],
     tip: 'Move to full push-ups once you can do 3 × 15 with good form.' },
+  { id: 'bicep-curl', name: 'Bicep curl', aliases: ['Dumbbell curl', 'Curls', 'Biceps curl'], muscles: ['Arms'], equipment: 'Dumbbells', log: 'weight', demo: 'curl',
+    steps: ['Stand tall, dumbbells at your sides, palms facing forward.', 'Keep the elbows pinned to your sides and curl the weights up to shoulder height.', 'Squeeze the biceps at the top, then lower slowly until the arms are straight.'],
+    tip: "Don't swing — if the shoulders or hips move, the weight is too heavy." },
   { id: 'tricep-dips', name: 'Tricep dips', aliases: ['Dips'], muscles: ['Arms', 'Chest'], equipment: 'Bench or dip bars', log: 'reps',
     steps: ['Hands on the edge of a bench behind you, legs out.', 'Bend the elbows straight back to about 90°.', 'Press up until the arms are straight.'],
     tip: 'Keep your back close to the bench to protect the shoulders.' },
-  { id: 'shoulder-press', name: 'Shoulder press', aliases: ['Overhead press'], muscles: ['Shoulders', 'Arms'], equipment: 'Dumbbells or barbell', log: 'weight',
+  { id: 'shoulder-press', name: 'Shoulder press', aliases: ['Overhead press'], muscles: ['Shoulders', 'Arms'], equipment: 'Dumbbells or barbell', log: 'weight', demo: 'shoulder-press',
     steps: ['Stand or sit tall with weights at shoulder height.', 'Press straight overhead until the arms lock out.', 'Lower back to the shoulders with control.'],
     tip: "Brace your core and don't lean back." },
   { id: 'lateral-raise', name: 'Lateral raise', muscles: ['Shoulders'], equipment: 'Dumbbells', log: 'weight',
     steps: ['Hold light dumbbells at your sides, slight bend in the elbows.', 'Raise them out to shoulder height.', 'Lower slowly.'],
     tip: 'Lead with the elbows; lighter weight, strict form.' },
-  { id: 'bent-over-row', name: 'Bent-over row', aliases: ['Barbell row'], muscles: ['Back', 'Arms'], equipment: 'Barbell or dumbbells', log: 'weight',
+  { id: 'bent-over-row', name: 'Bent-over row', aliases: ['Barbell row'], muscles: ['Back', 'Arms'], equipment: 'Barbell or dumbbells', log: 'weight', demo: 'row',
     steps: ['Hinge at the hips with a flat back, bar hanging below the shoulders.', 'Pull the weight to your lower ribs.', 'Lower with control.'],
     tip: 'Squeeze the shoulder blades together at the top.' },
-  { id: 'back-squat', name: 'Back squat', aliases: ['Barbell squat'], muscles: ['Legs', 'Glutes', 'Core'], equipment: 'Barbell, rack', log: 'weight', demo: 'squat',
+  { id: 'back-squat', name: 'Back squat', aliases: ['Barbell squat'], muscles: ['Legs', 'Glutes', 'Core'], equipment: 'Barbell, rack', log: 'weight',
     steps: ['Bar on the upper back, feet shoulder-width, toes slightly out.', 'Sit back and down until the thighs are at least parallel.', 'Drive up through the whole foot.'],
     tip: 'Knees track over the toes; keep the chest up.' },
   { id: 'bodyweight-squats', name: 'Bodyweight squats', aliases: ['Air squats', 'Squats'], muscles: ['Legs', 'Glutes'], equipment: 'Bodyweight', log: 'reps', demo: 'squat',
     steps: ['Feet shoulder-width, arms forward for balance.', 'Sit down and back as low as is comfortable.', 'Stand up tall and squeeze the glutes.'],
     tip: 'Weight in the heels and mid-foot, not the toes.' },
-  { id: 'jump-squats', name: 'Jump squats', muscles: ['Legs', 'Glutes', 'Cardio'], equipment: 'Bodyweight', log: 'reps', demo: 'squat',
+  { id: 'jump-squats', name: 'Jump squats', muscles: ['Legs', 'Glutes', 'Cardio'], equipment: 'Bodyweight', log: 'reps',
     steps: ['Squat down to parallel.', 'Explode upward into a jump.', 'Land softly and go straight into the next rep.'],
     tip: 'Land quietly with bent knees.' },
   { id: 'bulgarian-split-squat', name: 'Bulgarian split squat', muscles: ['Legs', 'Glutes'], equipment: 'Bench, dumbbells', log: 'weight',
@@ -99,7 +116,7 @@ export const EXERCISES: ExerciseInfo[] = [
   { id: 'calf-raises', name: 'Calf raises', muscles: ['Legs'], equipment: 'Step or machine', log: 'reps',
     steps: ['Balls of the feet on a step, heels hanging.', 'Rise as high as you can.', 'Lower the heels below the step.'],
     tip: 'Pause at the top for a second.' },
-  { id: 'glute-bridge', name: 'Glute bridge', aliases: ['Hip bridge'], muscles: ['Glutes', 'Core'], equipment: 'Bodyweight', log: 'reps',
+  { id: 'glute-bridge', name: 'Glute bridge', aliases: ['Hip bridge'], muscles: ['Glutes', 'Core'], equipment: 'Bodyweight', log: 'reps', demo: 'glute-bridge',
     steps: ['Lie on your back, knees bent, feet flat.', 'Drive the hips up until knees, hips and shoulders line up.', 'Lower slowly.'],
     tip: 'Squeeze the glutes at the top; ribs stay down.' },
   { id: 'plank', name: 'Plank', muscles: ['Core'], equipment: 'Bodyweight', log: 'time',
@@ -108,6 +125,9 @@ export const EXERCISES: ExerciseInfo[] = [
   { id: 'side-plank', name: 'Side plank', muscles: ['Core'], equipment: 'Bodyweight', log: 'time',
     steps: ['Lie on one side, forearm under the shoulder.', 'Lift the hips into a straight line.', 'Hold, then switch sides.'],
     tip: 'Stack the feet, or stagger them for balance.' },
+  { id: 'crunches', name: 'Crunches', aliases: ['Crunch', 'Sit-ups', 'Situps'], muscles: ['Core'], equipment: 'Mat', log: 'reps', demo: 'core',
+    steps: ['Lie on your back, knees bent, feet flat; fingertips lightly at your temples.', 'Breathe out and curl your shoulder blades off the mat by tightening the abs.', 'Pause, then lower slowly. The lower back stays on the mat.'],
+    tip: "Don't pull on your head — the abs do the lifting; keep a fist-sized gap under the chin." },
   { id: 'dead-bug', name: 'Dead bug', muscles: ['Core'], equipment: 'Bodyweight', log: 'reps',
     steps: ['On your back, arms up, knees bent at 90°.', 'Lower the opposite arm and leg toward the floor.', 'Return and switch sides.'],
     tip: 'Press the lower back into the floor the whole time.' },
@@ -132,13 +152,13 @@ export const EXERCISES: ExerciseInfo[] = [
   { id: 'rowing-machine', name: 'Rowing machine', aliases: ['Rower'], muscles: ['Cardio', 'Back', 'Legs'], equipment: 'Rowing machine', log: 'time',
     steps: ['Push with the legs first.', 'Then lean back slightly and pull the handle to the ribs.', 'Return arms, body, then legs.'],
     tip: 'Legs – body – arms on the way out; reverse on the way in.' },
-  { id: 'jog', name: 'Jog', aliases: ['Light jog', 'Jog in place', 'Jog 1 min / walk 1 min'], muscles: ['Cardio', 'Legs'], equipment: 'Treadmill or outdoors', log: 'time', demo: 'jog',
+  { id: 'jog', name: 'Jog', aliases: ['Light jog', 'Jog in place', 'Jog 1 min / walk 1 min'], muscles: ['Cardio', 'Legs'], equipment: 'Treadmill or outdoors', log: 'time',
     steps: ['Easy pace where you can still talk.', 'Land under your hips with short, quick steps.', 'Relax the shoulders; arms swing forward and back.'],
     tip: 'Most runs should feel easy — that builds the base.' },
   { id: 'walk', name: 'Walk', aliases: ['Warm-up walk', 'Cool-down walk'], muscles: ['Cardio'], equipment: 'Treadmill or outdoors', log: 'time',
     steps: ['Walk at a comfortable, brisk pace.', 'Keep a tall posture and swing the arms.'],
     tip: 'Use it to warm up before and cool down after hard work.' },
-  { id: 'stretch', name: 'Warm-up stretch', aliases: ['Stretch', 'Yoga flow', 'Mobility'], muscles: ['Full body'], equipment: 'Mat', log: 'time', demo: 'stretch',
+  { id: 'stretch', name: 'Warm-up stretch', aliases: ['Stretch', 'Yoga flow', 'Mobility'], muscles: ['Full body'], equipment: 'Mat', log: 'time',
     steps: ['Move each joint through its full range slowly.', 'Hold each stretch about 20–30 seconds.', 'Breathe out as you ease deeper.'],
     tip: 'Stretch to mild tension, never pain.' },
   { id: 'foam-rolling', name: 'Foam rolling', muscles: ['Full body'], equipment: 'Foam roller', log: 'time',

@@ -136,7 +136,15 @@ supabase/               migrations (schema + RLS), functions/manage-users, CLI c
   (`dumbbells`, `barbell`, `mat`, drawn in BodyModel and attached to the grips each frame). Chest, legs,
   full body and cardio use Mixamo clips; curl, shoulder press, row, crunch and glute bridge have no
   Mixamo clip and are animated by hand with IK in `handDemo()` (core and glute bridge lie the figure on
-  its back via `lieSupine()`). `demoFor(exercise)` picks an exercise's own clip or its focus's.
+  its back via `lieSupine()`). Only the exercise a demo actually shows gets it (`demoFor`).
+- **Demo accuracy**: in demo mode `resolveArms()` (a) rolls each upper arm so the elbow hinges towards
+  the biceps side (`fixElbowPlane`; aim-only IK leaves the roll arbitrary) and (b) tests elbow, forearm,
+  fist and held equipment as balls against a CPU-skinned sample of the body (arms excluded) and re-solves
+  the arm out of the skin. Check new demos front and side with `window.__demoT = seconds` (dev only).
+- **Muscle highlight**: `FOCUS_DEMOS[*].muscles` (`MuscleKey` → 1 primary, <1 secondary) → BodyModel
+  `highlight` → skin-shader uniforms `uMusA/B/C`; regions are computed per pixel in `MUSCLE_GLSL` from the
+  bind position (height fraction, side, front/back via `uMusFront`, arm weight, armT). The bind pose is an
+  A-pose with the elbows bent forward (biceps on the +z side).
 - **Measurements + progress photos** (`components/BodyProgress.tsx` on Goals, `lib/photos.ts`): photos
   are private to the member — online in the `progress-photos` storage bucket under `<user id>/`, and the
   `photos` records are hidden from staff by row-level security; offline a small data URL.

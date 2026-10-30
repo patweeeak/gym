@@ -3,7 +3,7 @@ import { Lightbulb, Trophy } from 'lucide-react';
 import { useMe } from '../lib/auth';
 import { useDB } from '../lib/db';
 import { defaultHairStyle } from '../lib/body';
-import { demoFor, type DemoClip, type ExerciseInfo, type GymProp } from '../lib/exercises';
+import { demoFor, workedMuscles, type DemoClip, type ExerciseInfo, type GymProp, type MuscleMap } from '../lib/exercises';
 import { goalOf, latestWeight } from '../lib/stats';
 import { describeRecord, personalRecords, progressOf } from '../lib/training';
 import { fmtDate } from '../lib/utils';
@@ -12,8 +12,9 @@ import { Badge, Modal } from './ui';
 
 const BodyModel = lazy(() => import('./BodyModel'));
 
-/** A looping Body Lab demo of one movement with its equipment, in the member's own Body Lab look. */
-export function DemoViewer({ clip, props }: { clip: DemoClip; props: GymProp[] }) {
+/** A looping Body Lab demo of one movement with its equipment and worked muscles lit, in the member's own look. */
+export function DemoViewer({ clip, props, muscles }: { clip: DemoClip; props: GymProp[]; muscles: MuscleMap }) {
+  const worked = workedMuscles(muscles);
   const me = useMe();
   const db = useDB();
   const lab = db.bodyLab?.[me.id];
@@ -23,9 +24,13 @@ export function DemoViewer({ clip, props }: { clip: DemoClip; props: GymProp[] }
   return (
     <div className="neu-inset-sm" style={{ borderRadius: 18, overflow: 'hidden' }}>
       <Suspense fallback={<div className="body-stage compact center muted small" style={{ display: 'grid', placeItems: 'center' }}>Loading demo…</div>}>
-        <BodyModel demo={clip} props={props} params={params} skinTone={lab?.skinTone} hairStyle={lab?.hairStyle ?? defaultHairStyle(params.sex)}
+        <BodyModel demo={clip} props={props} highlight={muscles} params={params} skinTone={lab?.skinTone} hairStyle={lab?.hairStyle ?? defaultHairStyle(params.sex)}
           hairColor={lab?.hairColor} outfit={lab?.outfit} outfitColor={lab?.outfitColor} />
       </Suspense>
+      <div className="row wrap" style={{ gap: 6, padding: '10px 14px 12px' }}>
+        <span className="muscle-dot" /><span className="xs bold">Works: {worked.primary.join(', ')}</span>
+        {worked.secondary.length > 0 && <span className="xs bold muted">· also {worked.secondary.join(', ').toLowerCase()}</span>}
+      </div>
     </div>
   );
 }
@@ -45,10 +50,7 @@ export function ExerciseDetail({ ex, onClose }: { ex: ExerciseInfo; onClose: () 
           {ex.muscles.map((m) => <Badge key={m} tone="accent">{m}</Badge>)}
           <Badge>{ex.equipment}</Badge>
         </div>
-        {demo && <>
-          <DemoViewer clip={demo.clip} props={demo.props} />
-          {demo.focus && <div className="xs bold muted center" style={{ marginTop: -10 }}>{demo.focus} focus demo</div>}
-        </>}
+        {demo && <DemoViewer clip={demo.clip} props={demo.props} muscles={demo.muscles} />}
         <ol className="col small" style={{ gap: 8, paddingLeft: 20, margin: 0 }}>
           {ex.steps.map((s) => <li key={s}>{s}</li>)}
         </ol>

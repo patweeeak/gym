@@ -630,3 +630,5 @@ h1, h2, h3, .page-head h1 { font-weight: 700; letter-spacing: -0.03em; }
 .photo-thumb { position: relative; aspect-ratio: 3 / 4; border: 0; padding: 0; border-radius: 14px; overflow: hidden; cursor: pointer; background: var(--bg); box-shadow: var(--raise-sm); }
 .photo-thumb span { position: absolute; left: 6px; bottom: 6px; padding: 2px 7px; border-radius: 99px; background: rgba(0,0,0,.55); color: #fff; }
 .photo-ph { background: var(--track); }
+
+.muscle-dot { width: 10px; height: 10px; border-radius: 50%; background: #ff2a14; box-shadow: 0 0 10px #ff2a14; flex-shrink: 0; }

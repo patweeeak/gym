@@ -11,7 +11,7 @@ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.j
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { Dribbble, Dumbbell, Grid3x3, Pause, Play, RotateCcw, RotateCw, Scan, SkipForward, ZoomIn, ZoomOut } from 'lucide-react';
 import { cls } from '../lib/utils';
-import type { GymProp } from '../lib/exercises';
+import { MUSCLE_KEYS, type GymProp, type MuscleMap } from '../lib/exercises';
 import { HAIR_COLORS, OUTFIT_COLORS, SKIN_TONES, bmiColor, bodyFatPct, defaultHairStyle, type BodyParams, type HairStyle, type Outfit } from '../lib/body';
 
 const MODEL_URL = `${import.meta.env.BASE_URL}models/human.glb`;
@@ -164,24 +164,61 @@ type Bridge = { clip: number; stand: number; plank: number; down: number; up: nu
 const IDLE_S = 4;
 const SHOW_POSE_BUTTON = false; // free-throw stance button (hidden; the stance still works)
 
+const MUSCLE_GLSL = `
+  float band(float v, float a, float b, float f) { return smoothstep(a - f, a + f, v) * (1.0 - smoothstep(b - f, b + f, v)); }
+  // weights of the 11 muscle groups at a bind-space point; the arm is along ±x in the T-pose
+  void muscleMasks(vec3 p, vec3 n, float arm, float armT, out vec4 a, out vec4 b, out vec4 c) {
+    float y = p.y, ax = abs(p.x), fr = smoothstep(-0.1, 0.35, n.z), bk = smoothstep(-0.1, 0.35, -n.z);
+    float onArm = smoothstep(0.35, 0.65, arm), torso = 1.0 - onArm;
+    float up = smoothstep(-0.2, 0.3, n.y), dn = smoothstep(-0.2, 0.3, -n.y);
+    // arm (T-pose): biceps on the front of the upper arm, triceps behind, forearm flexors in front
+    float upperArm = onArm * band(armT, 0.16, 0.52, 0.05);
+    float delts = onArm * band(armT, -0.12, 0.2, 0.05) + torso * band(y, 0.775, 0.83, 0.01) * band(ax, 0.13, 0.2, 0.015);
+    float biceps = upperArm * smoothstep(-0.35, 0.25, n.z) * (1.0 - 0.5 * dn);
+    float triceps = upperArm * smoothstep(-0.15, 0.4, -n.z) * (1.0 - 0.6 * up);
+    float forearms = onArm * band(armT, 0.56, 0.92, 0.05) * smoothstep(-0.3, 0.3, n.z);
+    // torso
+    // pecs: an oval each side of the sternum, reaching out towards the armpit
+    vec2 pq = vec2((ax - 0.082) / 0.072, (y - 0.742) / 0.036);
+    float chest = torso * fr * (1.0 - smoothstep(0.7, 1.0, length(pq)));
+    // rectus abdominis: a column from the pubis to the ribs; obliques to the sides
+    float abs_ = torso * fr * band(y, 0.56, 0.725, 0.012) * (1.0 - smoothstep(0.055, 0.075, ax));
+    abs_ = max(abs_, 0.6 * torso * band(y, 0.57, 0.67, 0.015) * band(ax, 0.075, 0.15, 0.02) * smoothstep(-0.2, 0.3, n.z)); // obliques
+    float back = torso * bk * band(y, 0.6, 0.815, 0.015) * (1.0 - smoothstep(0.15, 0.18, ax));
+    float glutes = bk * band(y, 0.455, 0.555, 0.012) * (1.0 - smoothstep(0.16, 0.19, ax)) * torso;
+    // legs: quads in front of the thigh, hamstrings behind, calves behind the shin
+    float thigh = band(y, 0.29, 0.465, 0.012) * (1.0 - onArm);
+    float quads = thigh * fr;
+    float hamstrings = thigh * bk;
+    float calves = band(y, 0.075, 0.255, 0.012) * bk * (1.0 - onArm);
+    a = vec4(chest, back, delts, biceps);
+    b = vec4(triceps, forearms, abs_, glutes);
+    c = vec4(quads, hamstrings, calves, 0.0);
+  }
+`;
+
 const HASH_GLSL = `
   float ipHash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
 `;
 
 export default function BodyModel({ params, skinTone = SKIN_TONES[1], hairStyle, hairColor = HAIR_COLORS[1].value,
-  outfit = 'compression', outfitColor = OUTFIT_COLORS[0].value, demo, props }: {
+  outfit = 'compression', outfitColor = OUTFIT_COLORS[0].value, demo, props, highlight }: {
   params: BodyParams; skinTone?: string; hairStyle?: HairStyle; hairColor?: string;
   outfit?: Outfit; outfitColor?: string;
   /** play only this animation on a loop (exercise pages), in a compact viewer without the toolbar */
   demo?: string;
   /** gym equipment shown with the demo */
   props?: GymProp[];
+  /** muscles to light up (1 = primary) */
+  highlight?: MuscleMap;
 }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
   const target = useRef(params);
   const demoRef = useRef(demo);
   demoRef.current = demo;
+  const highlightRef = useRef(highlight);
+  highlightRef.current = highlight;
   const propsRef = useRef(props ?? []);
   propsRef.current = props ?? [];
   target.current = params;
@@ -360,6 +397,11 @@ export default function BodyModel({ params, skinTone = SKIN_TONES[1], hairStyle,
       rulerH = H;
     };
 
+    // highlighted muscles: chest, back, delts, biceps | triceps, forearms, abs, glutes | quads, hamstrings, calves
+    const musU = {
+      uMusA: { value: new THREE.Vector4() }, uMusB: { value: new THREE.Vector4() }, uMusC: { value: new THREE.Vector4() },
+      uMusPulse: { value: 0 }, uMusFront: { value: 1 }, // the bind mesh's front (+1: faces +z)
+    };
     const skin = new THREE.MeshPhysicalMaterial({
       color: new THREE.Color(toneRef.current), roughness: 0.58, metalness: 0,
       sheen: 0.35, sheenRoughness: 0.7, sheenColor: new THREE.Color('#ffd6c4'), clearcoat: 0.06, clearcoatRoughness: 0.6,
@@ -400,7 +442,7 @@ export default function BodyModel({ params, skinTone = SKIN_TONES[1], hairStyle,
       uAccent: { value: new THREE.Color(0xff5e1a) }, uStripe: { value: new THREE.Color(0xf1f1ee) },
     };
     shaped(skin, 'ip-skin', { value: 0 }, (sh) => {
-      Object.assign(sh.uniforms, cloth, { uHairCol: hairU.uHairCol });
+      Object.assign(sh.uniforms, cloth, { uHairCol: hairU.uHairCol }, musU);
       sh.vertexShader = `attribute vec4 aCW; attribute float aArmT; attribute vec3 aHairInfo; uniform float uMinY; uniform float uZc;
         uniform float uLooseTop; uniform float uLooseBot;
         varying float vBodyY; varying float vScalp; varying vec4 vCW; varying float vArmT; varying vec3 vBP; varying vec3 vBN;
@@ -411,10 +453,12 @@ export default function BodyModel({ params, skinTone = SKIN_TONES[1], hairStyle,
         vec4 cvv = outfitCover(vBP.y, vBP.x, vBP.z, aCW, aArmT, 0.012);
         transformed += normalize(normal) * (cvv.x * uLooseTop + cvv.y * uLooseBot + cvv.z * 0.009 + cvv.w * 0.0015) * uUnit;`);
       sh.fragmentShader = `uniform vec3 uTopCol; uniform vec3 uBotCol; uniform vec3 uShoeCol; uniform vec3 uAccent; uniform vec3 uStripe; uniform vec3 uHairCol;
+        uniform vec4 uMusA; uniform vec4 uMusB; uniform vec4 uMusC; uniform float uMusPulse; uniform float uMusFront;
         varying float vBodyY; varying float vScalp; varying vec4 vCW; varying float vArmT; varying vec3 vBP; varying vec3 vBN;
         ${CLOTH_GLSL}
         ${HASH_GLSL}
-        float clothAmt;\n` + sh.fragmentShader
+        ${MUSCLE_GLSL}
+        float clothAmt; float musAmt;\n` + sh.fragmentShader
         .replace('#include <color_fragment>', `#include <color_fragment>
           {
             float e = 0.0022, y = vBP.y, ax = abs(vBP.x);
@@ -446,9 +490,21 @@ export default function BodyModel({ params, skinTone = SKIN_TONES[1], hairStyle,
             diffuseColor.rgb = mix(diffuseColor.rgb, top, cv.x);
             clothAmt = max(max(cv.x, cv.y), max(cv.z, cv.w));
           }
-          diffuseColor.rgb = mix(diffuseColor.rgb, uHairCol * 0.6, 0.85 * smoothstep(-0.6, 0.45, vScalp));`)
+          diffuseColor.rgb = mix(diffuseColor.rgb, uHairCol * 0.6, 0.85 * smoothstep(-0.6, 0.45, vScalp));
+          // worked muscles glow through skin and clothes, pulsing with each rep
+          {
+            vec4 ma, mb, mc;
+            muscleMasks(vBP, vec3(vBN.x, vBN.y, vBN.z * uMusFront), vCW.w, vArmT, ma, mb, mc);
+            musAmt = clamp(max(max(max(ma.x * uMusA.x, ma.y * uMusA.y), max(ma.z * uMusA.z, ma.w * uMusA.w)),
+              max(max(max(mb.x * uMusB.x, mb.y * uMusB.y), max(mb.z * uMusB.z, mb.w * uMusB.w)),
+              max(max(mc.x * uMusC.x, mc.y * uMusC.y), mc.z * uMusC.z))), 0.0, 1.0);
+            float glow = musAmt * (0.7 + 0.3 * uMusPulse);
+            diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.92, 0.05, 0.03), 0.92 * glow);
+          }`)
         .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
           roughnessFactor = mix(roughnessFactor, 0.86, clothAmt);`)
+        .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+          totalEmissiveRadiance += vec3(1.0, 0.07, 0.02) * musAmt * (0.35 + 0.45 * uMusPulse);`)
         .replace('#include <lights_physical_fragment>', `#include <lights_physical_fragment>
           material.sheenColor *= 1.0 - clothAmt;   // fabric has no skin sheen or oil
           material.clearcoat *= 1.0 - clothAmt;`);
@@ -554,8 +610,47 @@ export default function BodyModel({ params, skinTone = SKIN_TONES[1], hairStyle,
     let modelH = 1.68;
     let modelFloor = 0;
     let groundMesh: THREE.SkinnedMesh | null = null, groundIdx = new Int32Array(0);
+    let bodyIdx = new Int32Array(0), bodyPos = new Float32Array(0), bodyNrm = new Float32Array(0);
     const gv = new THREE.Vector3(), gn = new THREE.Vector3();
     // Lowest posed skin point (CPU-skinned sample of vertices, including the shader's weight shaping).
+    /** a vertex as posed: bind position + the shader's weight shaping, skinned, in world space */
+    const posedVertex = (i: number, out: THREE.Vector3, along = 0) => {
+      const gm = groundMesh!, g = gm.geometry, un = u.uUnit.value;
+      const fat = g.getAttribute('aFat'), belly = g.getAttribute('aBelly'), bust = g.getAttribute('aBust');
+      out.fromBufferAttribute(g.getAttribute('position'), i);
+      gn.fromBufferAttribute(g.getAttribute('normal'), i).normalize();
+      out.addScaledVector(gn, (u.uInflate.value * (fat ? fat.getX(i) : 0) + along) * un);
+      const bl = belly ? belly.getX(i) : 0;
+      out.z += u.uFront.value * (u.uBelly.value * bl + u.uBust.value * (bust ? bust.getX(i) : 0)) * un;
+      out.y -= u.uBelly.value * bl * 0.15 * un;
+      gm.applyBoneTransform(i, out);
+      return out.applyMatrix4(gm.matrixWorld);
+    };
+    // Collisions (demos): the body's skin as points with outward normals, sampled after posing
+    const cp = new THREE.Vector3(), cq = new THREE.Vector3();
+    const sampleBody = () => {
+      if (!groundMesh) return;
+      for (let k = 0; k < bodyIdx.length; k++) {
+        posedVertex(bodyIdx[k], cp); posedVertex(bodyIdx[k], cq, 0.01);
+        cp.toArray(bodyPos, k * 3);
+        cq.sub(cp).normalize().toArray(bodyNrm, k * 3);
+      }
+    };
+    /** how far a ball of radius r at p sinks into the body, as the vector that pushes it out */
+    const penetration = (p: THREE.Vector3, r: number, out: THREE.Vector3) => {
+      let best = Infinity, bi = -1;
+      for (let k = 0; k < bodyIdx.length; k++) {
+        const dx = p.x - bodyPos[k * 3], dy = p.y - bodyPos[k * 3 + 1], dz = p.z - bodyPos[k * 3 + 2], d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 < best) { best = d2; bi = k; }
+      }
+      out.set(0, 0, 0);
+      if (bi < 0 || best > 0.2 * 0.2) return out;
+      const nx = bodyNrm[bi * 3], ny = bodyNrm[bi * 3 + 1], nz = bodyNrm[bi * 3 + 2];
+      const d = (p.x - bodyPos[bi * 3]) * nx + (p.y - bodyPos[bi * 3 + 1]) * ny + (p.z - bodyPos[bi * 3 + 2]) * nz;
+      if (d < r) out.set(nx, ny, nz).multiplyScalar(r - d);
+      return out;
+    };
+
     const lowestSkin = () => {
       const gm = groundMesh;
       if (!gm) return 0;
@@ -628,6 +723,7 @@ export default function BodyModel({ params, skinTone = SKIN_TONES[1], hairStyle,
       }
       const F = Math.sign(footZ / (footN || 1) - kneeZ / (kneeN || 1)) || 1;
       u.uFront.value = F;
+      musU.uMusFront.value = F;
       const H = geoH;
       const aGroin = new Float32Array(n);
       const aCW = new Float32Array(n * 4), aArmT = new Float32Array(n).fill(-1);
@@ -872,6 +968,11 @@ export default function BodyModel({ params, skinTone = SKIN_TONES[1], hairStyle,
         const low = yMinB.min.y + (yMinB.max.y - yMinB.min.y) * 0.06, idx: number[] = [];
         for (let i = 0; i < pos.count; i++) if (pos.getY(i) < low ? i % 2 === 0 : i % 14 === 0) idx.push(i);
         groundIdx = Int32Array.from(idx);
+        const cw = geo.getAttribute('aCW'), body: number[] = [];
+        const stride = Math.max(1, Math.round(pos.count / 2600));
+        for (let i = 0; i < pos.count; i += stride) if (cw.getW(i) < 0.15) body.push(i);
+        bodyIdx = Int32Array.from(body);
+        bodyPos = new Float32Array(body.length * 3); bodyNrm = new Float32Array(body.length * 3);
         groundMesh = m;
       }
       const box = new THREE.Box3().setFromObject(root, true);
@@ -1204,7 +1305,7 @@ export default function BodyModel({ params, skinTone = SKIN_TONES[1], hairStyle,
         const ankles = [wp(bones[`foot_${L()}`]), wp(bones[`foot_${Rr()}`])];
         moveRoot(fwd.clone().multiplyScalar(-0.1 * sc).addScaledVector(Y, -0.07 * sc));
         solveLeg(L(), ankles[0], fwd); solveLeg(Rr(), ankles[1], fwd);
-        const lean = 0.72, along = Y.clone().multiplyScalar(Math.cos(lean)).addScaledVector(fwd, Math.sin(lean));
+        const lean = 0.85, along = Y.clone().multiplyScalar(Math.cos(lean)).addScaledVector(fwd, Math.sin(lean));
         applyWorld(bones.spine_01, qT.setFromUnitVectors(wp(bones.neck_01).sub(wp(bones.pelvis)).normalize(), along));
         const pitch = v1.crossVectors(fwd, Y).normalize().clone();
         rotWorld(bones.neck_01, pitch, 0.35); // eyes a little ahead, neck in line
@@ -1263,6 +1364,100 @@ export default function BodyModel({ params, skinTone = SKIN_TONES[1], hairStyle,
       const mid = wp(bones.head).add(wp(bones[`foot_${L()}`])).multiplyScalar(0.5);
       figure.position.x -= mid.x; figure.position.z -= mid.z;
       figure.updateMatrixWorld(true);
+    };
+
+    /**
+     * Keeps both arms (and what they hold) out of the body: elbow, forearm, wrist, fist and the ends of
+     * a dumbbell / the barbell are tested as balls against the skin; the hand target and elbow are
+     * nudged out and the arm re-solved, keeping each hand's orientation. Demos only.
+     */
+    /**
+     * Rolls the upper arm about its own axis so the elbow hinges the way a real one does: the front of the
+     * arm (biceps, the inside of the elbow) faces the way the forearm bends. Aim-only IK leaves this roll
+     * arbitrary, which bends the elbow sideways through the skin. A nearly straight arm turns its biceps
+     * towards the front of the chest. The hand keeps its orientation.
+     */
+    const fixElbowPlane = (side: 'l' | 'r') => {
+      const ua = bones[`upperarm_${side}`], fa = bones[`lowerarm_${side}`], hd = bones[`hand_${side}`];
+      const ub = binds?.find((b) => b.bone === ua), sb = binds?.find((b) => b.bone === bones.spine_03);
+      if (!ua || !fa || !hd || !ub || !sb) return;
+      const S = wp(ua), E = wp(fa), W = wp(hd);
+      const axis = E.clone().sub(S).normalize();
+      const bend = W.clone().sub(E); bend.addScaledVector(axis, -bend.dot(axis));
+      const chestFront = restFwd.clone().applyQuaternion(bones.spine_03.getWorldQuaternion(new THREE.Quaternion()).multiply(sb.restW.clone().invert()));
+      chestFront.addScaledVector(axis, -chestFront.dot(axis));
+      const k = smooth(bend.length() / Math.max(1e-6, W.distanceTo(E)), 0.12, 0.4); // how bent the elbow is
+      const want = chestFront.normalize().multiplyScalar(1 - k).addScaledVector(bend.normalize(), k);
+      if (want.lengthSq() < 1e-6) return;
+      want.normalize();
+      const cur = restFwd.clone().applyQuaternion(ua.getWorldQuaternion(new THREE.Quaternion()).multiply(ub.restW.clone().invert()));
+      cur.addScaledVector(axis, -cur.dot(axis));
+      if (cur.lengthSq() < 1e-6) return;
+      cur.normalize();
+      const ang = Math.atan2(v1.crossVectors(cur, want).dot(axis), cur.dot(want));
+      if (Math.abs(ang) < 1e-3) return;
+      const handQ = hd.getWorldQuaternion(new THREE.Quaternion());
+      rotWorld(ua, axis, ang);
+      aimWorld(fa, hd, W.clone().sub(wp(fa)).normalize());
+      setWorldQuat(hd, handQ);
+    };
+
+    const pv = new THREE.Vector3(), pushV = new THREE.Vector3();
+    const resolveArms = (sc: number) => {
+      if (!bodyIdx.length || !fistHands.length) return;
+      fixElbowPlane(L()); fixElbowPlane(Rr());
+      sampleBody();
+      const held = new Set(propsRef.current);
+      for (let iter = 0; iter < 4; iter++) {
+        let moved = false;
+        const wants: Partial<Record<'l' | 'r', { hand: THREE.Vector3; elbow: THREE.Vector3; q: THREE.Quaternion }>> = {};
+        const barPush = new THREE.Vector3();
+        for (const side of [L(), Rr()]) {
+          const S = wp(bones[`upperarm_${side}`]), E = wp(bones[`lowerarm_${side}`]), W = wp(bones[`hand_${side}`]);
+          const tip = wp(bones[`middle_01_${side}`]).sub(W).multiplyScalar(1.5).add(W);
+          const handPush = new THREE.Vector3(), elbowPush = new THREE.Vector3();
+          const test = (p: THREE.Vector3, r: number, into: THREE.Vector3) => {
+            penetration(p, r * sc, pushV);
+            if (pushV.lengthSq() > into.lengthSq()) into.copy(pushV);
+          };
+          test(E, 0.045, elbowPush);
+          test(E.clone().lerp(W, 0.5), 0.038, handPush);
+          test(W, 0.035, handPush);
+          test(tip, 0.035, handPush);
+          if (held.has('dumbbells')) {
+            const axis = acrossPalm(side, pv).clone(), g = gripOf(side, new THREE.Vector3());
+            test(g.clone().addScaledVector(axis, 0.1), 0.05, handPush);
+            test(g.clone().addScaledVector(axis, -0.1), 0.05, handPush);
+          }
+          if (handPush.lengthSq() < 1e-8 && elbowPush.lengthSq() < 1e-8) continue;
+          moved = true;
+          wants[side] = { hand: W.add(handPush), elbow: E.add(elbowPush).sub(S), q: bones[`hand_${side}`].getWorldQuaternion(new THREE.Quaternion()) };
+        }
+        if (held.has('barbell')) {
+          const a = gripOf(L(), new THREE.Vector3()), b = gripOf(Rr(), new THREE.Vector3());
+          for (let k = 0; k <= 8; k++) {
+            penetration(a.clone().lerp(b, k / 8), 0.02 * sc, pushV);
+            if (pushV.lengthSq() > barPush.lengthSq()) barPush.copy(pushV);
+          }
+          if (barPush.lengthSq() > 1e-8) {
+            moved = true;
+            for (const side of [L(), Rr()]) {
+              const w = wants[side] ?? { hand: wp(bones[`hand_${side}`]), elbow: wp(bones[`lowerarm_${side}`]).sub(wp(bones[`upperarm_${side}`])), q: bones[`hand_${side}`].getWorldQuaternion(new THREE.Quaternion()) };
+              w.hand.add(barPush);
+              wants[side] = w;
+            }
+          }
+        }
+        if (!moved) break;
+        for (const side of [L(), Rr()]) {
+          const w = wants[side];
+          if (!w) continue;
+          solveArm(side, w.hand, w.elbow);
+          setWorldQuat(bones[`hand_${side}`], w.q);
+          fixElbowPlane(side);
+        }
+        figure.updateMatrixWorld(true);
+      }
     };
 
     // Free-throw stance built on the standing pose with leg and arm IK.
@@ -1569,6 +1764,14 @@ export default function BodyModel({ params, skinTone = SKIN_TONES[1], hairStyle,
       raf = requestAnimationFrame(tick);
       const t = clock.getElapsedTime(), frameDt = Math.min(0.1, t - lastT);
       lastT = t;
+      {
+        const want: MuscleMap = highlightRef.current || {};
+        const vals = MUSCLE_KEYS.map((k) => want[k] ?? 0);
+        const ke = 1 - Math.exp(-frameDt * 5);
+        const vs = [musU.uMusA.value, musU.uMusB.value, musU.uMusC.value];
+        vals.forEach((v, i) => { const vec = vs[i >> 2], c = (['x', 'y', 'z', 'w'] as const)[i & 3]; vec[c] += (v - vec[c]) * ke; });
+        musU.uMusPulse.value = 0.5 + 0.5 * Math.sin(t * 4.2);
+      }
       const tg = target.current;
       cur.h += (tg.heightCm - cur.h) * 0.14;
       cur.w += (tg.weightKg - cur.w) * 0.14;
@@ -1617,7 +1820,9 @@ export default function BodyModel({ params, skinTone = SKIN_TONES[1], hairStyle,
       const forced = import.meta.env.DEV ? (window as unknown as { __bodyLabPose?: { ex: number; tt: number } }).__bodyLabPose : undefined;
       if (forced && motion && motion.clips[forced.ex + 1]) { ex = forced.ex + 1; tt = forced.tt; ww = 1; breather = false; bridgeNow = null; }
       const pinned = demoRef.current && motion ? motion.clips.findIndex((c) => c.id === demoRef.current) : -1;
-      if (pinned > 0) { ex = pinned; tt = t; ww = 1; breather = false; bridgeNow = null; }
+      // dev-only: window.__demoT = seconds freezes a demo at that moment (for screenshots)
+      const demoT = (import.meta.env.DEV ? (window as unknown as { __demoT?: number }).__demoT : undefined) ?? t;
+      if (pinned > 0) { ex = pinned; tt = demoT; ww = 1; breather = false; bridgeNow = null; }
       const shownEx = breather && plan.length ? plan[(plan.findIndex((x) => x.clip === ex) + 1) % plan.length].clip : ex;
       const exName = pinned > 0 ? '' : poseOn ? 'Free-throw stance' : (workW > 0.3 || forced) && shownEx >= 1 && motion ? motion.clips[shownEx].name : '';
       if (exName !== exShown) { exShown = exName; setExercise(exName); }
@@ -1679,7 +1884,8 @@ export default function BodyModel({ params, skinTone = SKIN_TONES[1], hairStyle,
           bones.pelvis.position.lerpVectors(standPelvis, bones.pelvis.position, ww);
           figure.updateMatrixWorld(true);
         }
-        if (motion && demoRef.current && HAND_DEMOS.has(demoRef.current)) handDemo(demoRef.current as HandDemo, t, H);
+        if (motion && demoRef.current && HAND_DEMOS.has(demoRef.current)) handDemo(demoRef.current as HandDemo, demoT, H);
+        if (motion && demoRef.current) { figure.updateMatrixWorld(true); resolveArms(H / 1.7); }
         poseW += ((poseOn && motion ? 1 : 0) - poseW) * (1 - Math.exp(-frameDt * 4)); // ~1 s, at any frame rate
         if (poseW > 0.001 && motion) {
           ALL_BONES.forEach((b, i) => poseQ[i].copy(b.quaternion));

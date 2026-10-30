@@ -184,7 +184,7 @@ function ExerciseLibrary() {
         <Card className="col">
           <div className="section-title"><PlayCircle size={17} /> {muscle} · {FOCUS_DEMOS[muscle].label}</div>
           <div style={{ width: '100%', maxWidth: 560, margin: '0 auto' }}>
-            <DemoViewer key={muscle} clip={FOCUS_DEMOS[muscle].clip} props={FOCUS_DEMOS[muscle].props} />
+            <DemoViewer key={muscle} clip={FOCUS_DEMOS[muscle].clip} props={FOCUS_DEMOS[muscle].props} muscles={FOCUS_DEMOS[muscle].muscles} />
           </div>
         </Card>
       )}
