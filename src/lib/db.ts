@@ -29,7 +29,7 @@ let state: DB = remote ? emptyDB(DEFAULT_SETTINGS) : loadLocal();
 function loadLocal(): DB {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return JSON.parse(raw) as DB;
+    if (raw) return { ...emptyDB(DEFAULT_SETTINGS), ...(JSON.parse(raw) as DB) }; // older saves lack newer collections
   } catch { /* fall through to seed */ }
   const s = seed();
   persist(s);

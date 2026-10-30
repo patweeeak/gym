@@ -160,13 +160,17 @@ const HASH_GLSL = `
 `;
 
 export default function BodyModel({ params, skinTone = SKIN_TONES[1], hairStyle, hairColor = HAIR_COLORS[1].value,
-  outfit = 'compression', outfitColor = OUTFIT_COLORS[0].value }: {
+  outfit = 'compression', outfitColor = OUTFIT_COLORS[0].value, demo }: {
   params: BodyParams; skinTone?: string; hairStyle?: HairStyle; hairColor?: string;
   outfit?: Outfit; outfitColor?: string;
+  /** play only this animation on a loop (exercise pages), in a compact viewer without the toolbar */
+  demo?: string;
 }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
   const target = useRef(params);
+  const demoRef = useRef(demo);
+  demoRef.current = demo;
   target.current = params;
   const toneRef = useRef(skinTone);
   toneRef.current = skinTone;
@@ -302,7 +306,7 @@ export default function BodyModel({ params, skinTone = SKIN_TONES[1], hairStyle,
       ruler = new THREE.LineSegments(g, rulerMat);
       topLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.3, H, 0), new THREE.Vector3(RX + 0.05, H, 0)]), topMat);
       topLine.computeLineDistances();
-      scene.add(ruler, topLine);
+      if (!demoRef.current) scene.add(ruler, topLine); // exercise demos show just the body
       rulerH = H;
     };
 
@@ -1383,8 +1387,10 @@ export default function BodyModel({ params, skinTone = SKIN_TONES[1], hairStyle,
       let ww = workW * amp;
       const forced = import.meta.env.DEV ? (window as unknown as { __bodyLabPose?: { ex: number; tt: number } }).__bodyLabPose : undefined;
       if (forced && motion && motion.clips[forced.ex + 1]) { ex = forced.ex + 1; tt = forced.tt; ww = 1; breather = false; bridgeNow = null; }
+      const pinned = demoRef.current && motion ? motion.clips.findIndex((c) => c.id === demoRef.current) : -1;
+      if (pinned > 0) { ex = pinned; tt = t; ww = 1; breather = false; bridgeNow = null; }
       const shownEx = breather && plan.length ? plan[(plan.findIndex((x) => x.clip === ex) + 1) % plan.length].clip : ex;
-      const exName = poseOn ? 'Free-throw stance' : (workW > 0.3 || forced) && shownEx >= 1 && motion ? motion.clips[shownEx].name : '';
+      const exName = pinned > 0 ? '' : poseOn ? 'Free-throw stance' : (workW > 0.3 || forced) && shownEx >= 1 && motion ? motion.clips[shownEx].name : '';
       if (exName !== exShown) { exShown = exName; setExercise(exName); }
       u.uGlute.value = clamp((bmi - 22) * 0.0012, 0, 0.03) + 0.014 * f;
       u.uHip.value = 0.024 * f + Math.max(0, bmi - 22) * 0.0009;
@@ -1533,7 +1539,7 @@ export default function BodyModel({ params, skinTone = SKIN_TONES[1], hairStyle,
   }, []);
 
   return (
-    <div className="body-stage" data-noswipe>
+    <div className={cls('body-stage', demo && 'compact')} data-noswipe>
       <div ref={mountRef} className="body-canvas" />
       <div ref={labelRef} className="body-height-tag" />
       {progress < 1 && !failed && (

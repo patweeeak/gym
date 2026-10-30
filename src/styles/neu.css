@@ -319,6 +319,14 @@ input::placeholder, textarea::placeholder { color: var(--faint); }
 .check { width: 26px; height: 26px; border-radius: 9px; box-shadow: var(--inset-sm); display: grid; place-items: center; cursor: pointer; border: 0; background: var(--bg); color: transparent; flex-shrink: 0; transition: all 0.2s; }
 .check.on { background: var(--grad); color: #fff; box-shadow: var(--accent-glow); }
 
+/* workout logger: one row per set */
+.set-row { transition: opacity 0.2s; }
+.set-row.done .set-input { opacity: 0.55; }
+.set-row .check { width: 34px; height: 34px; border-radius: 11px; margin-left: auto; }
+.set-input { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 0 10px; height: 38px; border-radius: 12px; box-shadow: var(--inset-sm); background: var(--bg); }
+.set-input input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; font-weight: 700; font-size: 16px; }
+.set-input:focus-within { color: var(--accent); }
+
 .qr { display: grid; grid-template-columns: repeat(11, 1fr); gap: 2px; width: 110px; height: 110px; padding: 8px; background: #fff; border-radius: 12px; }
 .qr i { background: #222; border-radius: 1px; }
 .qr i.off { background: transparent; }
@@ -548,6 +556,8 @@ h1, h2, h3, .page-head h1 { font-weight: 700; letter-spacing: -0.03em; }
 .body-card { position: relative; padding: 0; overflow: hidden; display: flex; flex-direction: column; }
 :root[data-theme='dark'] .body-card { background: radial-gradient(ellipse at 50% 80%, rgba(255, 94, 26, 0.12), transparent 60%), var(--bg); }
 .body-stage { position: relative; height: 560px; touch-action: none; }
+.body-stage.compact { height: 340px; }
+.body-stage.compact .body-tools, .body-stage.compact .body-hint, .body-stage.compact .body-exercise, .body-stage.compact .body-height-tag { display: none; }
 .body-canvas { position: absolute; inset: 0; cursor: grab; }
 .body-canvas:active { cursor: grabbing; }
 .body-height-tag {

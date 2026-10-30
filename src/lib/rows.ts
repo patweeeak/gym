@@ -5,10 +5,10 @@
 import type { DB, Settings, User } from './types';
 
 export type ArrayCol = 'goals' | 'weights' | 'meals' | 'sessions' | 'plans' | 'workoutLogs' | 'classes'
-  | 'announcements' | 'checkins' | 'payments' | 'requests' | 'notes';
+  | 'announcements' | 'checkins' | 'payments' | 'requests' | 'notes' | 'measurements' | 'photos' | 'challenges' | 'entries';
 export type MapCol = 'water' | 'bodyLab';
 export const ARRAY_COLS: ArrayCol[] = ['goals', 'weights', 'meals', 'sessions', 'plans', 'workoutLogs', 'classes',
-  'announcements', 'checkins', 'payments', 'requests', 'notes'];
+  'announcements', 'checkins', 'payments', 'requests', 'notes', 'measurements', 'photos', 'challenges', 'entries'];
 export const MAP_COLS: MapCol[] = ['water', 'bodyLab'];
 
 export interface RecordRow { collection: string; id: string; user_id: string | null; coach_id: string | null; doc: unknown }
@@ -30,6 +30,7 @@ function rowOf(col: ArrayCol | MapCol, key: string, item: unknown): RecordRow {
     case 'notes': return { collection: col, id: key, user_id: str(o.memberId), coach_id: str(o.instructorId), doc: item };
     case 'classes': return { collection: col, id: key, user_id: null, coach_id: str(o.instructorId), doc: item };
     case 'announcements': return { collection: col, id: key, user_id: null, coach_id: null, doc: item };
+    case 'challenges': return { collection: col, id: key, user_id: null, coach_id: str(o.createdBy), doc: item };
     case 'water': return { collection: col, id: key, user_id: key.split('|')[0] || null, coach_id: null, doc: item };
     case 'bodyLab': return { collection: col, id: key, user_id: key, coach_id: null, doc: item };
     default: return { collection: col, id: key, user_id: str(o.userId), coach_id: null, doc: item };
@@ -89,5 +90,6 @@ export const settingsToRow = (s: Settings): SettingsRow => ({
 
 export const emptyDB = (settings: Settings): DB => ({
   users: [], goals: [], weights: [], meals: [], water: {}, sessions: [], plans: [], workoutLogs: [], classes: [],
-  announcements: [], checkins: [], payments: [], requests: [], notes: [], settings, bodyLab: {},
+  announcements: [], checkins: [], payments: [], requests: [], notes: [], measurements: [], photos: [], challenges: [], entries: [],
+  settings, bodyLab: {},
 });

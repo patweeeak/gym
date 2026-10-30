@@ -1,14 +1,17 @@
-import { celebrate, toast } from '../../lib/fx';
 import { useState } from 'react';
-import { Check, Clock, Dumbbell, Lock, Trophy } from 'lucide-react';
+import { Check, ChevronRight, Clock, Dumbbell, Lock, PlayCircle, Search, Trophy } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useMe } from '../../lib/auth';
-import { update, useDB } from '../../lib/db';
+import { useDB } from '../../lib/db';
+import { EXERCISES, MUSCLES, type ExerciseInfo, type Muscle } from '../../lib/exercises';
+import { describeRecord, personalRecords } from '../../lib/training';
+import { WorkoutLogger } from '../../components/WorkoutLogger';
+import { ExerciseDetail } from '../../components/ExerciseDetail';
 import { LIBRARY } from '../../lib/library';
 import { goalOf, latestWeight, workoutsThisWeek } from '../../lib/stats';
-import type { Exercise } from '../../lib/types';
-import { DAYS, DAYS_LONG, cls, dayKey, fmtDate, isPremium, parseDay, uid } from '../../lib/utils';
-import { Badge, Button, Card, Empty, Input, Locked, Modal, PageHeader, Progress, Segmented } from '../../components/ui';
+import type { Exercise, LoggedSet, WorkoutLog } from '../../lib/types';
+import { DAYS, DAYS_LONG, cls, fmtDate, isPremium, parseDay } from '../../lib/utils';
+import { Badge, Button, Card, Empty, Input, Locked, PageHeader, Progress, Segmented } from '../../components/ui';
 
 interface Session { title: string; exercises: Exercise[]; minutes: number }
 
@@ -17,7 +20,7 @@ export default function Workouts() {
   const db = useDB();
   const nav = useNavigate();
   const premium = isPremium(me);
-  const [tab, setTab] = useState<'plan' | 'library' | 'history'>(premium ? 'plan' : 'library');
+  const [tab, setTab] = useState<'plan' | 'library' | 'exercises' | 'history'>(premium ? 'plan' : 'library');
   const [active, setActive] = useState<Session | null>(null);
   const plans = db.plans.filter((p) => p.memberId === me.id).sort((a, b) => a.day - b.day);
   const dow = new Date().getDay();
@@ -31,7 +34,8 @@ export default function Workouts() {
       <PageHeader title="Workouts" subtitle={premium ? (coach ? `Plans from ${coach.name}` : 'Your training') : 'Free starter routines'}
         action={<Segmented value={tab} onChange={setTab} options={[
           { value: 'plan', label: premium ? 'My plan' : <><Lock size={12} /> My plan</> },
-          { value: 'library', label: 'Library' },
+          { value: 'library', label: 'Routines' },
+          { value: 'exercises', label: 'Exercises' },
           { value: 'history', label: premium ? 'History' : <><Lock size={12} /> History</> },
         ]} />} />
 
@@ -92,61 +96,104 @@ export default function Workouts() {
         </div>
       )}
 
+      {tab === 'exercises' && <ExerciseLibrary />}
+
       {tab === 'history' && (premium ? (
+        <>
+        <PersonalRecords />
         <Card>
           {logs.length === 0 && <Empty icon={<Dumbbell size={26} />} text="No workouts logged yet." />}
-          {logs.slice(0, 30).map((l) => (
-            <div key={l.id} className="neu-sm list-item">
-              <div className="neu-inset-sm center" style={{ width: 46, height: 46, display: 'grid', placeItems: 'center' }}><Check size={18} color="var(--green)" /></div>
-              <div className="grow"><div className="bold">{l.title}</div><div className="xs muted bold">{fmtDate(l.date)} · {DAYS[parseDay(l.date).getDay()]}</div></div>
-              <div className="small bold muted">{l.durationMin} min · {l.calories} kcal</div>
-            </div>
-          ))}
+          {logs.slice(0, 30).map((l) => <LogRow key={l.id} log={l} />)}
         </Card>
+        </>
       ) : (
         <Card className="center"><Empty icon={<Lock size={24} />} text="Workout history is a Premium feature"><Button variant="accent" onClick={() => nav('/app/upgrade')}>Go Premium</Button></Empty></Card>
       ))}
 
-      {active && <WorkoutSession session={active} canLog={premium} onClose={() => setActive(null)} weight={latestWeight(db, me.id) || 65} />}
+      {active && <WorkoutLogger title={active.title} exercises={active.exercises} minutes={active.minutes} canLog={premium}
+        onClose={() => setActive(null)} bodyWeight={latestWeight(db, me.id) || 65} />}
     </div>
   );
 }
 
-function WorkoutSession({ session, canLog, onClose, weight }: { session: Session; canLog: boolean; onClose: () => void; weight: number }) {
-  const me = useMe();
-  const [done, setDone] = useState<boolean[]>(session.exercises.map(() => false));
-  const [minutes, setMinutes] = useState(session.minutes);
-  const count = done.filter(Boolean).length;
-
-  const finish = () => {
-    update((d) => {
-      d.workoutLogs.push({ id: uid(), userId: me.id, date: dayKey(), title: session.title, durationMin: minutes, calories: Math.round(5 * weight * (minutes / 60)) });
-    });
-    celebrate(`${session.title} complete! 💪`);
-    onClose();
-  };
-
+/** One logged workout; tap to see its sets. */
+function LogRow({ log }: { log: WorkoutLog }) {
+  const [open, setOpen] = useState(false);
+  const groups = new Map<string, LoggedSet[]>();
+  for (const st of log.sets ?? []) groups.set(st.exercise, [...(groups.get(st.exercise) ?? []), st]);
   return (
-    <Modal open onClose={onClose} title={session.title}
-      footer={canLog
-        ? <><Button onClick={onClose}>Close</Button><Button variant="accent" disabled={count === 0} onClick={finish} icon={<Check size={16} />}>Finish & log</Button></>
-        : <Button variant="accent" onClick={onClose}>Done</Button>}>
-      <div className="col">
-        <Progress value={count} max={session.exercises.length} />
-        <div className="xs muted bold">{count} / {session.exercises.length} done</div>
-        {session.exercises.map((e, i) => (
-          <div key={i} className={cls('list-item', done[i] ? 'neu-inset-sm' : 'neu-sm')} style={{ cursor: 'pointer', marginTop: 4 }} onClick={() => {
-            const next = done.map((v, j) => (j === i ? !v : v));
-            setDone(next);
-            if (next.every(Boolean) && !done.every(Boolean)) toast('All exercises done — finish to log it!', 'celebrate');
-          }}>
-            <span className={cls('check', done[i] && 'on')}><Check size={15} /></span>
-            <div className="grow"><div className="bold" style={{ textDecoration: done[i] ? 'line-through' : undefined, opacity: done[i] ? 0.6 : 1 }}>{e.name}</div></div>
-            <span className="small bold muted">{e.sets} × {e.reps}</span>
+    <div className="neu-sm list-item" style={{ flexDirection: 'column', alignItems: 'stretch', cursor: groups.size ? 'pointer' : undefined }} onClick={() => setOpen(!open)}>
+      <div className="row">
+        <div className="neu-inset-sm center" style={{ width: 46, height: 46, display: 'grid', placeItems: 'center', flexShrink: 0 }}><Check size={18} color="var(--green)" /></div>
+        <div className="grow"><div className="bold">{log.title}</div><div className="xs muted bold">{fmtDate(log.date)} · {DAYS[parseDay(log.date).getDay()]}{groups.size ? ` · ${log.sets!.length} sets` : ''}</div></div>
+        <div className="small bold muted">{log.durationMin} min · {log.calories} kcal</div>
+        {groups.size > 0 && <ChevronRight size={16} style={{ transform: open ? 'rotate(90deg)' : undefined, transition: 'transform .2s' }} />}
+      </div>
+      {open && (
+        <div className="col small" style={{ gap: 4, marginTop: 10, paddingLeft: 58 }}>
+          {[...groups].map(([name, sets]) => (
+            <div key={name} className="row between">
+              <span className="bold">{name}</span>
+              <span className="muted bold">{sets.map((x) => (x.seconds ? `${x.seconds}s` : x.weight ? `${x.weight}×${x.reps}` : `${x.reps}`)).join(' · ')}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PersonalRecords() {
+  const me = useMe();
+  const db = useDB();
+  const prs = personalRecords(db, me.id).filter((r) => r.kind === 'weight').slice(0, 6);
+  if (!prs.length) return null;
+  return (
+    <Card>
+      <div className="card-head"><div className="section-title"><Trophy size={17} /> Personal records</div></div>
+      <div className="grid g3" style={{ gap: 12 }}>
+        {prs.map((r) => (
+          <div key={r.key} className="neu-inset-sm" style={{ padding: 14 }}>
+            <div className="xs bold muted">{r.name}</div>
+            <div className="heavy num" style={{ fontSize: 26 }}>{describeRecord(r)}</div>
+            <div className="xs muted bold">≈ {r.e1rm} kg 1-rep max · {fmtDate(r.date)}</div>
           </div>
         ))}
-        {canLog && <div style={{ marginTop: 8 }}><Input label="Duration (min)" type="number" value={minutes} onChange={(e) => setMinutes(+e.target.value)} /></div>}
       </div>
-    </Modal>
+    </Card>
+  );
+}
+
+/** Searchable exercise library; each exercise opens its how-to page (with a 3D demo where available). */
+function ExerciseLibrary() {
+  const [q, setQ] = useState('');
+  const [muscle, setMuscle] = useState<Muscle | ''>('');
+  const [open, setOpen] = useState<ExerciseInfo | null>(null);
+  const list = EXERCISES.filter((e) => (!muscle || e.muscles.includes(muscle))
+    && (!q || `${e.name} ${(e.aliases ?? []).join(' ')} ${e.equipment}`.toLowerCase().includes(q.toLowerCase())));
+  return (
+    <>
+      <Card className="col">
+        <Input icon={<Search size={16} />} placeholder="Search exercises or equipment" value={q} onChange={(e) => setQ(e.target.value)} />
+        <div className="chip-row">
+          <button className={cls('chip', !muscle && 'on')} onClick={() => setMuscle('')}>All</button>
+          {MUSCLES.map((m) => <button key={m} className={cls('chip', muscle === m && 'on')} onClick={() => setMuscle(m)}>{m}</button>)}
+        </div>
+      </Card>
+      <div className="grid g3">
+        {list.map((e) => (
+          <Card key={e.id} onClick={() => setOpen(e)}>
+            <div className="row between">
+              <div className="heavy">{e.name}</div>
+              {e.demo && <Badge tone="accent" icon={<PlayCircle size={11} />}>3D demo</Badge>}
+            </div>
+            <div className="small muted" style={{ marginTop: 4 }}>{e.muscles.join(' · ')}</div>
+            <div className="xs bold muted" style={{ marginTop: 8 }}>{e.equipment}</div>
+          </Card>
+        ))}
+        {list.length === 0 && <Card><Empty icon={<Dumbbell size={24} />} text="No exercises match" /></Card>}
+      </div>
+      {open && <ExerciseDetail ex={open} onClose={() => setOpen(null)} />}
+    </>
   );
 }

@@ -57,7 +57,25 @@ export interface WorkoutPlan {
   day: number; // 0 = Sunday
   exercises: Exercise[]; createdAt: string;
 }
-export interface WorkoutLog { id: string; userId: string; date: string; title: string; durationMin: number; calories: number }
+export interface LoggedSet { exercise: string; reps: number; weight?: number; seconds?: number } // weight in kg
+export interface WorkoutLog {
+  id: string; userId: string; date: string; title: string; durationMin: number; calories: number;
+  sets?: LoggedSet[]; // older logs only have the summary
+}
+/** Body measurements in cm (body fat in %); any field may be skipped. */
+export interface Measurement {
+  id: string; userId: string; date: string;
+  waist?: number; chest?: number; hips?: number; arm?: number; thigh?: number; bodyFat?: number;
+}
+/** A progress photo: `path` in the private storage bucket (online), or a small `dataUrl` (offline demo). */
+export interface ProgressPhoto { id: string; userId: string; date: string; pose: 'front' | 'side' | 'back'; path?: string; dataUrl?: string }
+export type ChallengeMetric = 'checkins' | 'workouts' | 'steps' | 'distance' | 'minutes';
+export interface Challenge {
+  id: string; title: string; description?: string; metric: ChallengeMetric; target: number;
+  start: string; end: string; createdBy: string; createdAt: string;
+}
+/** A member taking part in a challenge (id = `${challengeId}|${userId}`). */
+export interface ChallengeEntry { id: string; challengeId: string; userId: string; joinedAt: string }
 
 export interface GymClass {
   id: string; title: string; instructorId: string; day: number; time: string;
@@ -99,6 +117,10 @@ export interface DB {
   payments: Payment[];
   requests: UpgradeRequest[];
   notes: CoachNote[];
+  measurements: Measurement[];
+  photos: ProgressPhoto[];
+  challenges: Challenge[];
+  entries: ChallengeEntry[];
   settings: Settings;
   bodyLab?: Record<string, BodyLabPrefs>; // userId -> prefs (optional: older saved data has none)
 }

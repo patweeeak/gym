@@ -1,4 +1,4 @@
-import type { DB, User, Meal } from './types';
+import type { Challenge, ChallengeEntry, DB, LoggedSet, Meal, Measurement, User, WorkoutLog } from './types';
 import { addDays, dayKey, uid } from './utils';
 
 /** Demo data: one gym with an owner, two coaches and six members with a few weeks of history. */
@@ -87,9 +87,29 @@ export function seed(): DB {
       { name: 'Light jog', sets: 1, reps: '15 min' }, { name: 'Foam rolling', sets: 1, reps: '10 min' }, { name: 'Yoga flow', sets: 1, reps: '15 min' } ] });
   }
 
-  const workoutLogs = [];
-  for (let d = 1; d <= 20; d++) {
-    if (rand() < 0.45) workoutLogs.push({ id: uid(), userId: 'u-maria', date: dayKey(ago(d)), title: ['Upper Body Power', 'Leg Day', 'Core & Cardio Burn'][d % 3], durationMin: 45 + Math.round(rand() * 20), calories: 300 + Math.round(rand() * 150) });
+  // Maria's logged sessions: the loads creep up over the weeks, so she has personal records to beat
+  const START: Record<string, number> = { 'Bench press': 27.5, 'Bent-over row': 22.5, 'Shoulder press': 12.5, 'Back squat': 37.5, 'Romanian deadlift': 32.5 };
+  const workoutLogs: WorkoutLog[] = [];
+  for (let d = 20; d >= 1; d--) {
+    if (rand() >= 0.45) continue;
+    const plan = plans[d % 3];
+    const progress = Math.floor((20 - d) / 5) * 2.5; // +2.5 kg every ~5 days of training
+    const sets: LoggedSet[] = [];
+    for (const e of plan.exercises) {
+      for (let k = 0; k < Math.min(e.sets, 4); k++) {
+        if (START[e.name] !== undefined) sets.push({ exercise: e.name, weight: START[e.name] + progress, reps: k === e.sets - 1 ? 7 : 8 + Math.round(rand()) });
+        else if (/plank/i.test(e.name)) sets.push({ exercise: e.name, reps: 1, seconds: 40 + Math.round(rand() * 10) });
+        else if (/machine/i.test(e.name)) sets.push({ exercise: e.name, reps: 1, seconds: 600 });
+        else sets.push({ exercise: e.name, reps: /lunges/i.test(e.name) ? 12 : /calf/i.test(e.name) ? 15 : 10 + Math.round(rand() * 4) });
+      }
+    }
+    workoutLogs.push({ id: uid(), userId: 'u-maria', date: dayKey(ago(d)), title: plan.title, durationMin: 45 + Math.round(rand() * 20), calories: 300 + Math.round(rand() * 150), sets });
+  }
+
+  const measurements: Measurement[] = [];
+  for (let w = 6; w >= 0; w -= 2) {
+    const k = 6 - w;
+    measurements.push({ id: uid(), userId: 'u-maria', date: dayKey(ago(w * 7)), waist: +(84 - k * 0.6).toFixed(1), hips: +(101 - k * 0.4).toFixed(1), chest: 92, arm: +(29.5 - k * 0.1).toFixed(1), thigh: +(58 - k * 0.3).toFixed(1), bodyFat: +(31 - k * 0.5).toFixed(1) });
   }
 
   const classes = [
@@ -134,8 +154,23 @@ export function seed(): DB {
     }
   }
 
+  // two gym-wide challenges running this month
+  const monthStart = dayKey(new Date(now.getFullYear(), now.getMonth(), 1));
+  const monthEnd = dayKey(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+  const challenges: Challenge[] = [
+    { id: 'ch-checkins', title: 'Show Up Challenge', description: 'Check in 12 times this month. Top 3 win a free protein shake!', metric: 'checkins', target: 12,
+      start: monthStart, end: monthEnd, createdBy: 'u-admin', createdAt: iso(ago(10)) },
+    { id: 'ch-steps', title: '100K Steps', description: 'Walk or run 100,000 steps this month with the in-app tracker.', metric: 'steps', target: 100000,
+      start: monthStart, end: monthEnd, createdBy: 'u-coach2', createdAt: iso(ago(8)) },
+  ];
+  const entries: ChallengeEntry[] = [];
+  for (const [c, members] of [['ch-checkins', ['u-maria', 'u-juan', 'u-ana', 'u-leo', 'u-kat']], ['ch-steps', ['u-maria', 'u-ana', 'u-leo']]] as const) {
+    for (const m of members) entries.push({ id: `${c}|${m}`, challengeId: c, userId: m, joinedAt: iso(ago(7)) });
+  }
+
   return {
     users, goals, weights, meals, water, sessions, plans, workoutLogs, classes, announcements, checkins, payments,
+    measurements, photos: [], challenges, entries,
     requests: [{ id: uid(), userId: 'u-kat', createdAt: iso(ago(1)), status: 'pending' }],
     notes: [{ id: uid(), memberId: 'u-maria', instructorId: 'u-coach1', text: 'Great form on squats this week. Increase load by 2.5kg next session.', createdAt: iso(ago(2)) }],
     settings,
