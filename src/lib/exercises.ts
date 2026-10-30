@@ -14,7 +14,34 @@ export interface ExerciseInfo {
   log: LogKind;
   steps: string[];
   tip: string;
-  demo?: 'squat' | 'pushup' | 'jumping-jacks' | 'jog' | 'burpee' | 'stretch';
+  demo?: DemoClip;
+}
+
+export type DemoClip = 'squat' | 'pushup' | 'jumping-jacks' | 'jog' | 'burpee' | 'stretch' | 'curl' | 'shoulder-press' | 'row' | 'core' | 'glute-bridge';
+export type GymProp = 'dumbbells' | 'barbell' | 'mat';
+
+/** Body Lab clips that exist in public/models/anims (add an id here once its file is converted). */
+export const READY_CLIPS = new Set<DemoClip>(['squat', 'pushup', 'jumping-jacks', 'jog', 'burpee', 'stretch']);
+
+/** One 3D demo per workout focus, with the equipment it uses. */
+export const FOCUS_DEMOS: Record<Muscle, { clip: DemoClip; props: GymProp[]; label: string }> = {
+  Chest: { clip: 'pushup', props: ['mat'], label: 'Push-ups' },
+  Back: { clip: 'row', props: ['barbell'], label: 'Bent-over row' },
+  Shoulders: { clip: 'shoulder-press', props: ['dumbbells'], label: 'Shoulder press' },
+  Arms: { clip: 'curl', props: ['dumbbells'], label: 'Bicep curl' },
+  Core: { clip: 'core', props: ['mat'], label: 'Core' },
+  Glutes: { clip: 'glute-bridge', props: ['mat'], label: 'Glute bridge' },
+  Legs: { clip: 'squat', props: [], label: 'Squats' },
+  'Full body': { clip: 'burpee', props: [], label: 'Burpees' },
+  Cardio: { clip: 'jumping-jacks', props: [], label: 'Jumping jacks' },
+};
+const PROPS_FOR: Partial<Record<DemoClip, GymProp[]>> = Object.fromEntries(Object.values(FOCUS_DEMOS).map((f) => [f.clip, f.props]));
+
+/** The demo for an exercise: its own clip, else its main focus's; null when that clip isn't available yet. */
+export function demoFor(ex: ExerciseInfo): { clip: DemoClip; props: GymProp[]; focus?: Muscle } | null {
+  if (ex.demo && READY_CLIPS.has(ex.demo)) return { clip: ex.demo, props: PROPS_FOR[ex.demo] ?? [] };
+  const focus = ex.muscles.find((m) => READY_CLIPS.has(FOCUS_DEMOS[m].clip));
+  return focus ? { clip: FOCUS_DEMOS[focus].clip, props: FOCUS_DEMOS[focus].props, focus } : null;
 }
 
 export const MUSCLES: Muscle[] = ['Chest', 'Back', 'Shoulders', 'Arms', 'Core', 'Glutes', 'Legs', 'Full body', 'Cardio'];

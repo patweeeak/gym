@@ -11,6 +11,7 @@ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.j
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { Dribbble, Dumbbell, Grid3x3, Pause, Play, RotateCcw, RotateCw, Scan, SkipForward, ZoomIn, ZoomOut } from 'lucide-react';
 import { cls } from '../lib/utils';
+import type { GymProp } from '../lib/exercises';
 import { HAIR_COLORS, OUTFIT_COLORS, SKIN_TONES, bmiColor, bodyFatPct, defaultHairStyle, type BodyParams, type HairStyle, type Outfit } from '../lib/body';
 
 const MODEL_URL = `${import.meta.env.BASE_URL}models/human.glb`;
@@ -74,6 +75,13 @@ const EXERCISES = [
   { id: 'jumping-jacks', name: 'Jumping jacks' }, { id: 'squat', name: 'Air squats' }, { id: 'jog', name: 'Jog in place' },
   { id: 'burpee', name: 'Burpees' }, { id: 'pushup', name: 'Push-ups' }, { id: 'stretch', name: 'Warm-up stretch' },
 ];
+// clips used only for exercise / focus demos (not in the idle workout); a missing file is skipped
+const DEMO_CLIPS = [
+  { id: 'curl', name: 'Bicep curl' }, { id: 'shoulder-press', name: 'Shoulder press' }, { id: 'row', name: 'Row' },
+  { id: 'core', name: 'Core' }, { id: 'glute-bridge', name: 'Glute bridge' },
+];
+const WORKOUT_IDS = new Set(EXERCISES.map((e) => e.id));
+const MAT_T = 0.012; // mat thickness (m)
 const MOTION_FPS = 30;
 const mixamoName = (n: string) => n.replace(/^mixamorig\d*:?/, '');
 type Motion = {
@@ -160,17 +168,21 @@ const HASH_GLSL = `
 `;
 
 export default function BodyModel({ params, skinTone = SKIN_TONES[1], hairStyle, hairColor = HAIR_COLORS[1].value,
-  outfit = 'compression', outfitColor = OUTFIT_COLORS[0].value, demo }: {
+  outfit = 'compression', outfitColor = OUTFIT_COLORS[0].value, demo, props }: {
   params: BodyParams; skinTone?: string; hairStyle?: HairStyle; hairColor?: string;
   outfit?: Outfit; outfitColor?: string;
   /** play only this animation on a loop (exercise pages), in a compact viewer without the toolbar */
   demo?: string;
+  /** gym equipment shown with the demo */
+  props?: GymProp[];
 }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
   const target = useRef(params);
   const demoRef = useRef(demo);
   demoRef.current = demo;
+  const propsRef = useRef(props ?? []);
+  propsRef.current = props ?? [];
   target.current = params;
   const toneRef = useRef(skinTone);
   toneRef.current = skinTone;
@@ -211,6 +223,7 @@ export default function BodyModel({ params, skinTone = SKIN_TONES[1], hairStyle,
 
     const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 200);
     camera.position.set(0.55, 1.15, 4.1);
+    if (demoRef.current) camera.position.set(2.1, 1.05, 3.6); // demos: closer, at 3/4 so floor work reads well
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enablePan = false;
     controls.enableDamping = true;
@@ -220,9 +233,9 @@ export default function BodyModel({ params, skinTone = SKIN_TONES[1], hairStyle,
     controls.minPolarAngle = 0.75;
     controls.maxPolarAngle = 1.8;
     controls.target.set(0, 0.9, 0);
-    controls.autoRotate = true;
+    controls.autoRotate = !demoRef.current; // demos hold the 3/4 view (drag to turn)
     controls.autoRotateSpeed = 1.2;
-    let autoOn = true;
+    let autoOn = !demoRef.current;
     let idle: ReturnType<typeof setTimeout> | undefined;
     let lastInput = performance.now() / 1000; // any interaction pauses the idle workout
     const poke = () => { lastInput = performance.now() / 1000; };
@@ -286,6 +299,42 @@ export default function BodyModel({ params, skinTone = SKIN_TONES[1], hairStyle,
     ball.castShadow = true;
     ball.visible = false;
     scene.add(ball);
+
+    // gym equipment (sizes in metres: the figure is scaled to real height)
+    const metal = new THREE.MeshStandardMaterial({ color: 0xa3aab4, metalness: 0.85, roughness: 0.32 });
+    const rubber = new THREE.MeshStandardMaterial({ color: 0x1c1e24, roughness: 0.78 });
+    const accent = new THREE.MeshStandardMaterial({ color: 0xff5e1a, roughness: 0.45 });
+    const shadowed = (g: THREE.Object3D) => { g.traverse((o) => { if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).castShadow = true; }); return g; };
+    const makeDumbbell = () => {
+      const g = new THREE.Group();
+      g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.14, 16), metal));
+      for (const sgn of [-1, 1]) {
+        const head = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.048, 0.065, 6), rubber); // hex heads
+        head.position.y = sgn * 0.1;
+        const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.067, 6), accent);
+        ring.position.y = sgn * 0.1;
+        g.add(head, ring);
+      }
+      return shadowed(g);
+    };
+    const dumbbells = [makeDumbbell(), makeDumbbell()];
+    const barbell = (() => {
+      const g = new THREE.Group();
+      g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.0125, 0.0125, 1.7, 16), metal));
+      for (const sgn of [-1, 1]) {
+        const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.32, 16), metal);
+        sleeve.position.y = sgn * 0.68;
+        const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.045, 40), rubber);
+        plate.position.y = sgn * 0.6;
+        const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.03, 16), accent);
+        collar.position.y = sgn * 0.565;
+        g.add(sleeve, plate, collar);
+      }
+      return shadowed(g);
+    })();
+    const mat = new THREE.Mesh(new THREE.BoxGeometry(0.64, MAT_T, 1.9), new THREE.MeshStandardMaterial({ color: 0x2b2f38, roughness: 0.95 }));
+    mat.receiveShadow = true;
+    [...dumbbells, barbell, mat].forEach((o) => { o.visible = false; scene.add(o); });
 
     const rulerMat = new THREE.LineBasicMaterial({ color: 0x5e6573, transparent: true, opacity: 0.8 });
     const topMat = new THREE.LineDashedMaterial({ color: 0xff5e1a, dashSize: 0.05, gapSize: 0.035 });
@@ -830,7 +879,7 @@ export default function BodyModel({ params, skinTone = SKIN_TONES[1], hairStyle,
 
       figure.add(root);
       Object.values(bones).forEach((b) => { ALL_BONES.push(b); standQ.push(new THREE.Quaternion()); bridgeQ.push(new THREE.Quaternion()); poseQ.push(new THREE.Quaternion()); });
-      Promise.all([IDLE_CLIP, ...EXERCISES].map((c) => loader.loadAsync(ANIM_URL(c.id)).then((g) => ({ ...c, ...sampleClip(g) })).catch(() => null)))
+      Promise.all([IDLE_CLIP, ...EXERCISES, ...DEMO_CLIPS].map((c) => loader.loadAsync(ANIM_URL(c.id)).then((g) => ({ ...c, ...sampleClip(g) })).catch(() => null)))
         .then((got) => {
           if (disposed || !got[0]) return;
           const ok = got.filter((c): c is NonNullable<typeof c> => !!c);
@@ -851,12 +900,12 @@ export default function BodyModel({ params, skinTone = SKIN_TONES[1], hairStyle,
             bridge = { clip: bi, stand: bc.restFrame / MOTION_FPS, plank: plank / MOTION_FPS, down: span(bc.restFrame, plank), up: span(plank, bc.restFrame) };
           }
           let at = 0;
-          plan = clips.slice(1).map((c, i) => {
+          plan = clips.map((c, i) => ({ c, i })).filter(({ c, i }) => i > 0 && WORKOUT_IDS.has(c.id)).map(({ c, i }) => {
             const dur = c.frames / MOTION_FPS, floor = c.restScore > 1.5 && !!bridge;
             const blend = floor ? BRIDGE_FADE : EX_BLEND;
             const lead = floor ? bridge!.down + blend : blend, tail = floor ? blend + bridge!.up + EX_BLEND : blend;
             const play = Math.max(1, Math.round((EX_LEN - lead - tail) / dur)) * dur;
-            const slot = { clip: i + 1, start: at, blend, play, bridge: floor ? bridge : null, lead, len: lead + play + tail + EX_BREATHER };
+            const slot = { clip: i, start: at, blend, play, bridge: floor ? bridge : null, lead, len: lead + play + tail + EX_BREATHER };
             at += slot.len;
             return slot;
           });
@@ -1036,6 +1085,45 @@ export default function BodyModel({ params, skinTone = SKIN_TONES[1], hairStyle,
       aimWorld(ua, fa, elbow.clone().sub(sh).normalize());
       aimWorld(fa, hd, sh.addScaledVector(to, d).sub(fa.getWorldPosition(v2)).normalize());
     };
+    // Equipment follows the hands: a dumbbell sits in each fist across the palm, a barbell spans both
+    // grips; the mat lies on the platform along the body.
+    const gripA = new THREE.Vector3(), gripB = new THREE.Vector3(), gq = new THREE.Quaternion(), gv2 = new THREE.Vector3();
+    const gripOf = (side: 'l' | 'r', out: THREE.Vector3) => {
+      const h = bones[`hand_${side}`], m = bones[`middle_01_${side}`];
+      h.getWorldPosition(out).lerp(m.getWorldPosition(gv2), 0.8);
+      const fh = fistHands.find((x) => x.ours === side);
+      if (fh) out.addScaledVector(gv2.copy(fh.palm).applyQuaternion(h.getWorldQuaternion(gq).multiply(fqR.copy(fh.restW).invert())), 0.03);
+      return out;
+    };
+    const acrossPalm = (side: 'l' | 'r', out: THREE.Vector3) =>
+      bones[`index_01_${side}`].getWorldPosition(out).sub(bones[`pinky_01_${side}`].getWorldPosition(gv2)).normalize();
+    const placeProps = (matOn: boolean) => {
+      const want = new Set(propsRef.current);
+      const hands = !!(bones.hand_l && bones.middle_01_l && bones.index_01_l && bones.pinky_01_l && fistHands.length);
+      dumbbells.forEach((d, i) => {
+        d.visible = hands && want.has('dumbbells');
+        if (!d.visible) return;
+        const side = i ? Rr() : L();
+        d.position.copy(gripOf(side, gripA));
+        d.quaternion.setFromUnitVectors(Y, acrossPalm(side, gripB));
+      });
+      barbell.visible = hands && want.has('barbell');
+      if (barbell.visible) {
+        gripOf(L(), gripA); gripOf(Rr(), gripB);
+        barbell.position.copy(gripA).add(gripB).multiplyScalar(0.5);
+        barbell.quaternion.setFromUnitVectors(Y, gripA.sub(gripB).normalize());
+      }
+      mat.visible = matOn;
+      if (matOn && bones.head && bones.foot_l && bones.foot_r) {
+        const head = bones.head.getWorldPosition(gripA);
+        const feet = bones.foot_l.getWorldPosition(gripB).add(bones.foot_r.getWorldPosition(gv2)).multiplyScalar(0.5);
+        const along = head.clone().sub(feet).setY(0);
+        if (along.lengthSq() < 0.09) along.copy(restFwd); // standing: lay it out in front-to-back
+        mat.position.set((head.x + feet.x) / 2, MAT_T / 2 + 0.002, (head.z + feet.z) / 2);
+        mat.rotation.set(0, Math.atan2(along.x, along.z), 0);
+      }
+    };
+
     // Free-throw stance built on the standing pose with leg and arm IK.
     const freeThrow = (H: number) => {
       const sc = H / 1.7, up = Y;
@@ -1379,7 +1467,7 @@ export default function BodyModel({ params, skinTone = SKIN_TONES[1], hairStyle,
       const lookKey = `${toneRef.current}|${hr.style}|${hr.color}|${look.outfit}|${look.outfitColor}`;
       if (tg !== lastParams || lookKey !== lastLook) { lastParams = tg; lastLook = lookKey; poke(); }
       const nEx = plan.length;
-      const wantWork = workOn && !poseOn && ready && !!motion && nEx > 0 && performance.now() / 1000 - lastInput > IDLE_S;
+      const wantWork = workOn && !poseOn && !demoRef.current && ready && !!motion && nEx > 0 && performance.now() / 1000 - lastInput > IDLE_S;
       workW += ((wantWork ? 1 : 0) - workW) * (wantWork ? 0.025 : 0.15);
       if (workW < 0.002) workStart = null; else if (workStart === null) workStart = t;
       let ex = -1, tt = 0, amp = 0, breather = false, bridgeNow: { clip: number; tt: number; mix: number } | null = null;
@@ -1425,7 +1513,8 @@ export default function BodyModel({ params, skinTone = SKIN_TONES[1], hairStyle,
           ALL_BONES.forEach((b, i) => standQ[i].copy(b.quaternion));
           standPelvis.copy(bones.pelvis.position);
           poseRest(false);
-          const fistOf = (c: number) => (FIST_CLIPS.has(motion!.clips[c].id) ? 1 : 0);
+          const holding = propsRef.current.includes('dumbbells') || propsRef.current.includes('barbell');
+          const fistOf = (c: number) => (FIST_CLIPS.has(motion!.clips[c].id) || (holding && c === ex) ? 1 : 0);
           let exAir = 0;
           if (bridgeNow && bridgeNow.mix < 0.999) {
             applyMocap(bridgeNow.clip, bridgeNow.tt, 1, 0, fistOf(bridgeNow.clip));
@@ -1465,9 +1554,11 @@ export default function BodyModel({ params, skinTone = SKIN_TONES[1], hairStyle,
         rotWorld(bones.head, X, -0.1 * ageK);
         // Rest the lowest skin point on the platform, lifted only by the clip's jump height.
         figure.updateMatrixWorld(true);
-        const lift = airNow + 0.002 - lowestSkin();
+        const matOn = propsRef.current.includes('mat');
+        const lift = airNow + 0.002 + (matOn ? MAT_T : 0) - lowestSkin();
         figure.position.y += lift;
         figure.updateMatrixWorld(true);
+        placeProps(matOn);
         ball.visible = poseW > 0.6;
         if (ball.visible) {
           ball.position.copy(ballAt).setY(ballAt.y + lift);

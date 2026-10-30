@@ -3,10 +3,10 @@ import { Check, ChevronRight, Clock, Dumbbell, Lock, PlayCircle, Search, Trophy 
 import { useNavigate } from 'react-router-dom';
 import { useMe } from '../../lib/auth';
 import { useDB } from '../../lib/db';
-import { EXERCISES, MUSCLES, type ExerciseInfo, type Muscle } from '../../lib/exercises';
+import { EXERCISES, FOCUS_DEMOS, MUSCLES, READY_CLIPS, demoFor, type ExerciseInfo, type Muscle } from '../../lib/exercises';
 import { describeRecord, personalRecords } from '../../lib/training';
 import { WorkoutLogger } from '../../components/WorkoutLogger';
-import { ExerciseDetail } from '../../components/ExerciseDetail';
+import { DemoViewer, ExerciseDetail } from '../../components/ExerciseDetail';
 import { LIBRARY } from '../../lib/library';
 import { goalOf, latestWeight, workoutsThisWeek } from '../../lib/stats';
 import type { Exercise, LoggedSet, WorkoutLog } from '../../lib/types';
@@ -180,12 +180,20 @@ function ExerciseLibrary() {
           {MUSCLES.map((m) => <button key={m} className={cls('chip', muscle === m && 'on')} onClick={() => setMuscle(m)}>{m}</button>)}
         </div>
       </Card>
+      {muscle && READY_CLIPS.has(FOCUS_DEMOS[muscle].clip) && (
+        <Card className="col">
+          <div className="section-title"><PlayCircle size={17} /> {muscle} · {FOCUS_DEMOS[muscle].label}</div>
+          <div style={{ width: '100%', maxWidth: 560, margin: '0 auto' }}>
+            <DemoViewer key={muscle} clip={FOCUS_DEMOS[muscle].clip} props={FOCUS_DEMOS[muscle].props} />
+          </div>
+        </Card>
+      )}
       <div className="grid g3">
         {list.map((e) => (
           <Card key={e.id} onClick={() => setOpen(e)}>
             <div className="row between">
               <div className="heavy">{e.name}</div>
-              {e.demo && <Badge tone="accent" icon={<PlayCircle size={11} />}>3D demo</Badge>}
+              {demoFor(e) && <Badge tone="accent" icon={<PlayCircle size={11} />}>3D demo</Badge>}
             </div>
             <div className="small muted" style={{ marginTop: 4 }}>{e.muscles.join(' · ')}</div>
             <div className="xs bold muted" style={{ marginTop: 8 }}>{e.equipment}</div>
