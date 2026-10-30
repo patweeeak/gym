@@ -6,6 +6,7 @@ import type { Role } from './lib/types';
 import Shell from './components/Shell';
 import Login from './pages/Login';
 import Announcements from './pages/Announcements';
+import Challenges from './pages/Challenges';
 import CheckInDesk from './pages/CheckInDesk';
 import ClassesManager from './pages/ClassesManager';
 import AdminOverview from './pages/admin/Overview';
@@ -54,6 +55,7 @@ export default function App() {
         <Route path="/admin/checkin" element={<CheckInDesk />} />
         <Route path="/admin/announcements" element={<Announcements />} />
         <Route path="/admin/settings" element={<AdminSettings />} />
+        <Route path="/admin/challenges" element={<Challenges />} />
       </Route>
 
       <Route element={<RequireRole role="instructor"><Shell /></RequireRole>}>
@@ -63,6 +65,7 @@ export default function App() {
         <Route path="/coach/classes" element={<ClassesManager />} />
         <Route path="/coach/checkin" element={<CheckInDesk />} />
         <Route path="/coach/announcements" element={<Announcements />} />
+        <Route path="/coach/challenges" element={<Challenges />} />
       </Route>
 
       <Route element={<RequireRole role="member"><Shell /></RequireRole>}>
@@ -75,6 +78,7 @@ export default function App() {
         <Route path="/app/tools" element={<Tools />} />
         <Route path="/app/upgrade" element={<Upgrade />} />
         <Route path="/app/profile" element={<Profile />} />
+        <Route path="/app/challenges" element={<Challenges />} />
       </Route>
 
       <Route path="*" element={<Navigate to={user ? homeFor(user) : '/login'} replace />} />

@@ -154,13 +154,13 @@ export function seed(): DB {
     }
   }
 
-  // two gym-wide challenges running this month
-  const monthStart = dayKey(new Date(now.getFullYear(), now.getMonth(), 1));
-  const monthEnd = dayKey(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+  // two gym-wide challenges, started 10 days ago with 20 to go
+  const monthStart = dayKey(ago(10));
+  const monthEnd = dayKey(addDays(now, 20));
   const challenges: Challenge[] = [
-    { id: 'ch-checkins', title: 'Show Up Challenge', description: 'Check in 12 times this month. Top 3 win a free protein shake!', metric: 'checkins', target: 12,
+    { id: 'ch-checkins', title: 'Show Up Challenge', description: 'Check in 12 times in 30 days. Top 3 win a free protein shake!', metric: 'checkins', target: 12,
       start: monthStart, end: monthEnd, createdBy: 'u-admin', createdAt: iso(ago(10)) },
-    { id: 'ch-steps', title: '100K Steps', description: 'Walk or run 100,000 steps this month with the in-app tracker.', metric: 'steps', target: 100000,
+    { id: 'ch-steps', title: '100K Steps', description: 'Walk or run 100,000 steps in 30 days with the in-app tracker.', metric: 'steps', target: 100000,
       start: monthStart, end: monthEnd, createdBy: 'u-coach2', createdAt: iso(ago(8)) },
   ];
   const entries: ChallengeEntry[] = [];

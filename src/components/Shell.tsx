@@ -2,7 +2,7 @@ import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   BicepsFlexed, Calculator, CalendarDays, ClipboardCheck, Crown, Dumbbell, Footprints, Home, LayoutDashboard, LogOut,
-  Megaphone, Menu, Moon, Settings, Sun, Target, User as UserIcon, UserCog, Users, Utensils,
+  Megaphone, Menu, Moon, Settings, Sun, Target, Trophy, User as UserIcon, UserCog, Users, Utensils,
 } from 'lucide-react';
 import { useAuth, useMe } from '../lib/auth';
 import { useDB } from '../lib/db';
@@ -26,6 +26,7 @@ function allNavFor(u: User): NavItem[] {
     { to: '/admin/classes', label: 'Classes', icon: <CalendarDays size={I} /> },
     { to: '/admin/checkin', label: 'Check-in', icon: <ClipboardCheck size={I} /> },
     { to: '/admin/announcements', label: 'News', icon: <Megaphone size={I} /> },
+    { to: '/admin/challenges', label: 'Challenges', icon: <Trophy size={I} /> },
     { to: '/admin/settings', label: 'Settings', icon: <Settings size={I} /> },
   ];
   if (u.role === 'instructor') return [
@@ -34,6 +35,7 @@ function allNavFor(u: User): NavItem[] {
     { to: '/coach/classes', label: 'Classes', icon: <CalendarDays size={I} /> },
     { to: '/coach/checkin', label: 'Check-in', icon: <ClipboardCheck size={I} /> },
     { to: '/coach/announcements', label: 'News', icon: <Megaphone size={I} /> },
+    { to: '/coach/challenges', label: 'Challenges', icon: <Trophy size={I} /> },
   ];
   if (isPremium(u)) return [
     { to: '/app', label: 'Home', icon: <Home size={I} />, end: true },
@@ -43,6 +45,7 @@ function allNavFor(u: User): NavItem[] {
     { to: '/app/workouts', label: 'Workouts', icon: <Dumbbell size={I} /> },
     { to: '/app/classes', label: 'Classes', icon: <CalendarDays size={I} /> },
     { to: '/app/tools', label: 'Tools', icon: <Calculator size={I} /> },
+    { to: '/app/challenges', label: 'Challenges', icon: <Trophy size={I} /> },
     { to: '/app/profile', label: 'Profile', icon: <UserIcon size={I} /> },
   ];
   return [
@@ -51,6 +54,7 @@ function allNavFor(u: User): NavItem[] {
     { to: '/app/workouts', label: 'Workouts', icon: <Dumbbell size={I} /> },
     { to: '/app/tools', label: 'Tools', icon: <Calculator size={I} /> },
     { to: '/app/upgrade', label: 'Premium', icon: <Crown size={I} /> },
+    { to: '/app/challenges', label: 'Challenges', icon: <Trophy size={I} /> },
     { to: '/app/profile', label: 'Profile', icon: <UserIcon size={I} /> },
   ];
 }

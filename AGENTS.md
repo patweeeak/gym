@@ -123,6 +123,26 @@ supabase/               migrations (schema + RLS), functions/manage-users, CLI c
 - Code style: TypeScript strict, function components + hooks, small helpers inline, comments only where
   the logic is not obvious (match the surrounding density). Two-space indent, single quotes.
 
+## Member features
+
+- **Workout logging** (`components/WorkoutLogger.tsx`): per-set weight/reps or time (`WorkoutLog.sets`,
+  optional: older logs only have the summary), rest timer, PRs on finish. PR / progress maths in
+  `lib/training.ts` (estimated 1-rep max, Epley, reps capped at 12); exercises are grouped by library id.
+- **Exercise library** (`lib/exercises.ts`, `components/ExerciseDetail.tsx`, Workouts → Exercises):
+  `findExercise()` matches plan names by name/alias (case and plural-insensitive); `log` decides how an
+  exercise is logged. `demo` names a Body Lab clip: `<BodyModel demo="squat">` plays only that clip in a
+  compact viewer (no toolbar, ruler or workout timeline).
+- **Measurements + progress photos** (`components/BodyProgress.tsx` on Goals, `lib/photos.ts`): photos
+  are private to the member — online in the `progress-photos` storage bucket under `<user id>/`, and the
+  `photos` records are hidden from staff by row-level security; offline a small data URL.
+- **Challenges** (`pages/Challenges.tsx`, `lib/challenges.ts`, Home `ChallengeCard`): staff create
+  (`challenges`, gym-wide rows), members join (`entries`, id `<challenge>|<user>`). Online the
+  leaderboard comes from the `challenge_leaderboard(challenge)` SQL function (members can't read each
+  other's activity; it exposes only first name + last initial); offline it is computed in the browser.
+  Metrics: checkins, workouts, minutes, steps, distance.
+- Demo data: `seed.ts` (Maria's logged sets, measurements, two rolling 30-day challenges);
+  `npm run db:seed:features` adds just these to an existing Supabase project.
+
 ## Online payments (Xendit, test mode)
 
 - Client: `src/lib/payments.ts` (`startCheckout`, `confirmCheckout`, `applyPayment`, method labels) and
@@ -199,7 +219,6 @@ crossed feet, collapsed shoulders, thin forearms, feet through the platform and 
 
 ## Known gaps / likely next work
 
-Push notifications (incl. renewal reminders), going live with Xendit (gym's verified account), set/rep/weight workout logging with PRs, exercise library
-with Body Lab demos, progress photos and measurements, class booking with waitlist (Classes UI is
-currently hidden), wearable sync via Fitbit/Garmin/Strava cloud APIs (a PWA cannot read Health Connect / Apple Health), challenges/leaderboards, coach chat,
+Push notifications (incl. renewal reminders), going live with Xendit (gym's verified account), class booking with waitlist (Classes UI is
+currently hidden), wearable sync via Fitbit/Garmin/Strava cloud APIs (a PWA cannot read Health Connect / Apple Health), coach chat,
 an owner retention dashboard, and Philippine Data Privacy Act compliance (consent, export, deletion).

@@ -1,3 +1,4 @@
+import { ChallengeCard } from '../../components/ChallengeCard';
 import { celebrate, toast } from '../../lib/fx';
 import { useNavigate } from 'react-router-dom';
 import { Calculator, CalendarDays, ChevronRight, Crown, Droplets, Dumbbell, Flame, Footprints, Play, Ticket } from 'lucide-react';
@@ -69,6 +70,8 @@ function PremiumHome() {
           <Button variant="accent" icon={<Crown size={15} />}>Renew online</Button>
         </Card>
       )}
+
+      <ChallengeCard />
 
       <div className="grid g3">
         <Card className="span2 hero-steps" onClick={() => nav('/app/activity')}>
@@ -176,6 +179,8 @@ function BasicHome() {
   return (
     <div className="page">
       <PageHeader eyebrow={`${DAYS_LONG[now.getDay()]} · Basic member`} title={<>Ready to train,<br /><span className="neon">{me.name.split(' ')[0]}.</span></>} subtitle="Welcome back to the gym!" />
+
+      <ChallengeCard />
 
       <div className="grid g2">
         <MemberCard user={me} />
