@@ -20,8 +20,9 @@ export interface ExerciseInfo {
 export type DemoClip = 'squat' | 'pushup' | 'jumping-jacks' | 'jog' | 'burpee' | 'stretch' | 'curl' | 'shoulder-press' | 'row' | 'core' | 'glute-bridge';
 export type GymProp = 'dumbbells' | 'barbell' | 'mat';
 
-/** Body Lab clips that exist in public/models/anims (add an id here once its file is converted). */
-export const READY_CLIPS = new Set<DemoClip>(['squat', 'pushup', 'jumping-jacks', 'jog', 'burpee', 'stretch']);
+/** Body Lab demos available: Mixamo clips in public/models/anims, plus the hand-animated ones in BodyModel. */
+export const READY_CLIPS = new Set<DemoClip>(['squat', 'pushup', 'jumping-jacks', 'jog', 'burpee', 'stretch',
+  'curl', 'shoulder-press', 'row', 'core', 'glute-bridge']);
 
 /** One 3D demo per workout focus, with the equipment it uses. */
 export const FOCUS_DEMOS: Record<Muscle, { clip: DemoClip; props: GymProp[]; label: string }> = {
@@ -29,7 +30,7 @@ export const FOCUS_DEMOS: Record<Muscle, { clip: DemoClip; props: GymProp[]; lab
   Back: { clip: 'row', props: ['barbell'], label: 'Bent-over row' },
   Shoulders: { clip: 'shoulder-press', props: ['dumbbells'], label: 'Shoulder press' },
   Arms: { clip: 'curl', props: ['dumbbells'], label: 'Bicep curl' },
-  Core: { clip: 'core', props: ['mat'], label: 'Core' },
+  Core: { clip: 'core', props: ['mat'], label: 'Crunches' },
   Glutes: { clip: 'glute-bridge', props: ['mat'], label: 'Glute bridge' },
   Legs: { clip: 'squat', props: [], label: 'Squats' },
   'Full body': { clip: 'burpee', props: [], label: 'Burpees' },

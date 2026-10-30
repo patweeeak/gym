@@ -132,6 +132,11 @@ supabase/               migrations (schema + RLS), functions/manage-users, CLI c
   `findExercise()` matches plan names by name/alias (case and plural-insensitive); `log` decides how an
   exercise is logged. `demo` names a Body Lab clip: `<BodyModel demo="squat">` plays only that clip in a
   compact viewer (no toolbar, ruler or workout timeline).
+- **Focus demos**: `FOCUS_DEMOS` maps each focus (chest … cardio) to a demo and its equipment
+  (`dumbbells`, `barbell`, `mat`, drawn in BodyModel and attached to the grips each frame). Chest, legs,
+  full body and cardio use Mixamo clips; curl, shoulder press, row, crunch and glute bridge have no
+  Mixamo clip and are animated by hand with IK in `handDemo()` (core and glute bridge lie the figure on
+  its back via `lieSupine()`). `demoFor(exercise)` picks an exercise's own clip or its focus's.
 - **Measurements + progress photos** (`components/BodyProgress.tsx` on Goals, `lib/photos.ts`): photos
   are private to the member — online in the `progress-photos` storage bucket under `<user id>/`, and the
   `photos` records are hidden from staff by row-level security; offline a small data URL.

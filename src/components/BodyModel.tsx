@@ -76,10 +76,11 @@ const EXERCISES = [
   { id: 'burpee', name: 'Burpees' }, { id: 'pushup', name: 'Push-ups' }, { id: 'stretch', name: 'Warm-up stretch' },
 ];
 // clips used only for exercise / focus demos (not in the idle workout); a missing file is skipped
-const DEMO_CLIPS = [
-  { id: 'curl', name: 'Bicep curl' }, { id: 'shoulder-press', name: 'Shoulder press' }, { id: 'row', name: 'Row' },
-  { id: 'core', name: 'Core' }, { id: 'glute-bridge', name: 'Glute bridge' },
-];
+const DEMO_CLIPS: { id: string; name: string }[] = [];
+// demos with no Mixamo clip, animated by hand on this skeleton (see `handDemo`)
+type HandDemo = 'curl' | 'shoulder-press' | 'row' | 'core' | 'glute-bridge';
+const HAND_DEMOS = new Set<string>(['curl', 'shoulder-press', 'row', 'core', 'glute-bridge']);
+const SUPINE_DEMOS = new Set<string>(['core', 'glute-bridge']);
 const WORKOUT_IDS = new Set(EXERCISES.map((e) => e.id));
 const MAT_T = 0.012; // mat thickness (m)
 const MOTION_FPS = 30;
@@ -1124,6 +1125,146 @@ export default function BodyModel({ params, skinTone = SKIN_TONES[1], hairStyle,
       }
     };
 
+    // ---- hand-made exercise demos (no Mixamo clip for these) ----
+    const easeIO = (x: number) => { const k = clamp(x, 0, 1); return k * k * (3 - 2 * k); };
+    /** 0 → 1 → 0 over one rep: lift for `up` of the cycle, hold, lower for the rest */
+    const repCurve = (u: number, up = 0.4, hold = 0.12) =>
+      u < up ? easeIO(u / up) : u < up + hold ? 1 : 1 - easeIO((u - up - hold) / (1 - up - hold));
+    const wp = (b: THREE.Bone | undefined) => (b ? b.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3());
+    /** turn a hand about its own length so its palm faces `want` */
+    const facePalm = (side: 'l' | 'r', want: THREE.Vector3) => {
+      const hd = bones[`hand_${side}`], mid = bones[`middle_01_${side}`], fh = fistHands.find((x) => x.ours === side);
+      if (!hd || !mid || !fh) return;
+      const along = wp(mid).sub(wp(hd)).normalize();
+      const palm = fh.palm.clone().applyQuaternion(hd.getWorldQuaternion(fqO).multiply(fqR.copy(fh.restW).invert()));
+      const w = want.clone();
+      palm.addScaledVector(along, -palm.dot(along)); w.addScaledVector(along, -w.dot(along));
+      if (palm.lengthSq() < 1e-6 || w.lengthSq() < 1e-6) return;
+      palm.normalize(); w.normalize();
+      rotWorld(hd, along, Math.atan2(v1.crossVectors(palm, w).dot(along), palm.dot(w)));
+    };
+    const armLengths = (side: 'l' | 'r') => {
+      const S = wp(bones[`upperarm_${side}`]), E = wp(bones[`lowerarm_${side}`]), W = wp(bones[`hand_${side}`]);
+      return { S, L1: S.distanceTo(E), L2: E.distanceTo(W) };
+    };
+    const moveRoot = (by: THREE.Vector3) => {
+      const pel = bones.pelvis, par = pel.parent!;
+      const a = wp(pel), b = a.clone().add(by);
+      par.worldToLocal(a); par.worldToLocal(b);
+      pel.position.add(b.sub(a));
+      pel.updateMatrixWorld(true);
+    };
+    /** lay the figure on its back, head towards -x (a side view from the default camera) */
+    const lieSupine = () => {
+      const q1 = new THREE.Quaternion().setFromUnitVectors(restFwd, Y);
+      const head = Y.clone().applyQuaternion(q1).setY(0).normalize();
+      const q2 = new THREE.Quaternion().setFromUnitVectors(head, new THREE.Vector3(-1, 0, 0));
+      figure.quaternion.copy(q2.multiply(q1));
+      figure.updateMatrixWorld(true);
+    };
+    /** supine: knees up, feet flat about a shin's length from the hips */
+    const plantFeet = (A: THREE.Vector3, U: THREE.Vector3, sc: number) => {
+      for (const side of [L(), Rr()]) {
+        const hip = wp(bones[`thigh_${side}`]);
+        const ankle = hip.clone().addScaledVector(A, -0.36 * sc).addScaledVector(U, -0.03 * sc);
+        solveLeg(side, ankle, U.clone().addScaledVector(A, -0.4));
+      }
+    };
+    const handDemo = (kind: HandDemo, t: number, H: number) => {
+      const sc = H / 1.7, down = new THREE.Vector3(0, -1, 0), fwd = restFwd.clone();
+      const lat = wp(bones[`thigh_${L()}`]).sub(wp(bones[`thigh_${Rr()}`])).setY(0).normalize(); // the body's left
+      const sides: ['l' | 'r', number][] = [[L(), 1], [Rr(), -1]];
+      if (kind === 'curl') {
+        // alternating dumbbell curls: elbows pinned at the sides, palms turning up
+        for (const [side, out] of sides) {
+          const { S, L2 } = armLengths(side);
+          const lift = repCurve(((t / 2.6) + (out > 0 ? 0 : 0.5)) % 1, 0.38, 0.1);
+          const th = 0.12 + lift * 2.25;
+          const E = S.clone().addScaledVector(down, (armLengths(side).L1) * 0.97).addScaledVector(fwd, 0.035 * sc).addScaledVector(lat, out * 0.025 * sc);
+          const dir = down.clone().multiplyScalar(Math.cos(th)).addScaledVector(fwd, Math.sin(th));
+          solveArm(side, E.clone().addScaledVector(dir, L2), down.clone().addScaledVector(fwd, -0.7).addScaledVector(lat, out * 0.15));
+          facePalm(side, fwd.clone().multiplyScalar(Math.cos(th)).addScaledVector(Y, Math.sin(th)).addScaledVector(lat, -out * 0.25));
+        }
+        return;
+      }
+      if (kind === 'shoulder-press') {
+        // dumbbells from shoulder height to overhead, elbows out, palms forward
+        const lift = repCurve((t / 2.8) % 1, 0.36, 0.12);
+        for (const [side, out] of sides) {
+          const { S, L1, L2 } = armLengths(side);
+          const bottom = S.clone().addScaledVector(lat, out * 0.2 * sc).addScaledVector(Y, 0.05 * sc).addScaledVector(fwd, 0.04 * sc);
+          const top = S.clone().addScaledVector(Y, (L1 + L2) * 0.94).addScaledVector(lat, out * 0.06 * sc).addScaledVector(fwd, 0.03 * sc);
+          solveArm(side, bottom.lerp(top, lift), lat.clone().multiplyScalar(out).addScaledVector(down, 0.7).addScaledVector(fwd, -0.15));
+          facePalm(side, fwd);
+        }
+        return;
+      }
+      if (kind === 'row') {
+        // bent-over barbell row: hips back, soft knees, flat back ~40° forward, bar pulled to the ribs
+        const ankles = [wp(bones[`foot_${L()}`]), wp(bones[`foot_${Rr()}`])];
+        moveRoot(fwd.clone().multiplyScalar(-0.1 * sc).addScaledVector(Y, -0.07 * sc));
+        solveLeg(L(), ankles[0], fwd); solveLeg(Rr(), ankles[1], fwd);
+        const lean = 0.72, along = Y.clone().multiplyScalar(Math.cos(lean)).addScaledVector(fwd, Math.sin(lean));
+        applyWorld(bones.spine_01, qT.setFromUnitVectors(wp(bones.neck_01).sub(wp(bones.pelvis)).normalize(), along));
+        const pitch = v1.crossVectors(fwd, Y).normalize().clone();
+        rotWorld(bones.neck_01, pitch, 0.35); // eyes a little ahead, neck in line
+        const front = fwd.clone().multiplyScalar(Math.cos(lean)).addScaledVector(Y, -Math.sin(lean)); // the chest's facing
+        const lift = repCurve((t / 2.4) % 1, 0.35, 0.12);
+        const ribs = wp(bones.spine_02);
+        for (const [side, out] of sides) {
+          const { S, L1, L2 } = armLengths(side);
+          // arms hang straight down; both grips the same width either side of the body, so the bar stays level
+          const hang = S.clone().addScaledVector(down, (L1 + L2) * 0.96);
+          hang.addScaledVector(lat, out * 0.21 * sc - hang.clone().sub(ribs).dot(lat));
+          const top = ribs.clone().addScaledVector(front, 0.15 * sc).addScaledVector(lat, out * 0.21 * sc).addScaledVector(along, -0.03 * sc);
+          solveArm(side, hang.lerp(top, lift), Y.clone().addScaledVector(fwd, -0.6).addScaledVector(lat, out * 0.35));
+          facePalm(side, fwd.clone().negate());
+        }
+        return;
+      }
+      // lying on the back: core crunch / glute bridge
+      lieSupine();
+      const A = wp(bones.head).sub(wp(bones.pelvis)).setY(0).normalize(); // towards the head
+      const U = Y.clone(); // the body's front now faces up
+      const latS = wp(bones[`thigh_${L()}`]).sub(wp(bones[`thigh_${Rr()}`])).normalize();
+      if (kind === 'glute-bridge') {
+        const neck0 = wp(bones.neck_01);
+        const lift = repCurve((t / 3) % 1, 0.36, 0.2);
+        plantFeet(A, U, sc);
+        const ankles = [wp(bones[`foot_${L()}`]), wp(bones[`foot_${Rr()}`])];
+        moveRoot(U.clone().multiplyScalar(0.2 * sc * lift));
+        solveLeg(L(), ankles[0], U.clone().addScaledVector(A, -0.4)); solveLeg(Rr(), ankles[1], U.clone().addScaledVector(A, -0.4));
+        // upper back stays on the mat: swing the torso back down onto the shoulders
+        const pel = wp(bones.pelvis);
+        applyWorld(bones.spine_01, qT.setFromUnitVectors(wp(bones.neck_01).sub(pel).normalize(), neck0.sub(pel).normalize()));
+        // arms flat on the mat by the sides, palms down
+        for (const [side, out] of [[L(), 1], [Rr(), -1]] as ['l' | 'r', number][]) {
+          const { S, L1, L2 } = armLengths(side);
+          solveArm(side, S.clone().addScaledVector(A, -(L1 + L2) * 0.93).addScaledVector(latS, out * 0.1 * sc).addScaledVector(U, -0.05 * sc),
+            latS.clone().multiplyScalar(out).addScaledVector(U, -0.3));
+          facePalm(side, U.clone().negate());
+        }
+      } else {
+        // crunch: feet planted, fingertips at the temples, shoulders curl off the mat
+        plantFeet(A, U, sc);
+        const curl = 0.62 * repCurve((t / 2.4) % 1, 0.4, 0.12);
+        const axis = new THREE.Vector3().crossVectors(A, U).normalize();
+        rotWorld(bones.spine_02, axis, curl * 0.3);
+        rotWorld(bones.spine_03, axis, curl * 0.42);
+        rotWorld(bones.neck_01, axis, curl * 0.28);
+        const head = wp(bones.head);
+        for (const [side, out] of [[L(), 1], [Rr(), -1]] as ['l' | 'r', number][]) {
+          solveArm(side, head.clone().addScaledVector(latS, out * 0.1 * sc).addScaledVector(A, -0.02 * sc).addScaledVector(U, 0.02 * sc),
+            latS.clone().multiplyScalar(out).addScaledVector(A, 0.3));
+          facePalm(side, latS.clone().multiplyScalar(-out));
+        }
+      }
+      // centre the lying body on the platform
+      const mid = wp(bones.head).add(wp(bones[`foot_${L()}`])).multiplyScalar(0.5);
+      figure.position.x -= mid.x; figure.position.z -= mid.z;
+      figure.updateMatrixWorld(true);
+    };
+
     // Free-throw stance built on the standing pose with leg and arm IK.
     const freeThrow = (H: number) => {
       const sc = H / 1.7, up = Y;
@@ -1488,12 +1629,15 @@ export default function BodyModel({ params, skinTone = SKIN_TONES[1], hairStyle,
       if (ready) {
         const s = H / modelH;
         figure.scale.setScalar(s);
-        figure.position.y = -modelFloor * s;
+        figure.quaternion.identity();
+        figure.position.set(0, -modelFloor * s, 0);
+        figure.updateMatrixWorld(true);
         poseRest(!motion);
         let airNow = 0;
         if (motion) {
           bones.head.getWorldQuaternion(headRest).invert();
-          applyMocap(0, t, 0.15, 0.35, 0, true);
+          const gripping = propsRef.current.includes('dumbbells') || propsRef.current.includes('barbell');
+          applyMocap(0, t, 0.15, 0.35, gripping ? 1 : 0, !gripping);
           airNow = 0; // standing: feet flat
           bones.head.getWorldQuaternion(tmpQ2).multiply(headRest);
           v2.copy(Y).applyQuaternion(tmpQ2);
@@ -1535,6 +1679,7 @@ export default function BodyModel({ params, skinTone = SKIN_TONES[1], hairStyle,
           bones.pelvis.position.lerpVectors(standPelvis, bones.pelvis.position, ww);
           figure.updateMatrixWorld(true);
         }
+        if (motion && demoRef.current && HAND_DEMOS.has(demoRef.current)) handDemo(demoRef.current as HandDemo, t, H);
         poseW += ((poseOn && motion ? 1 : 0) - poseW) * (1 - Math.exp(-frameDt * 4)); // ~1 s, at any frame rate
         if (poseW > 0.001 && motion) {
           ALL_BONES.forEach((b, i) => poseQ[i].copy(b.quaternion));
@@ -1574,7 +1719,8 @@ export default function BodyModel({ params, skinTone = SKIN_TONES[1], hairStyle,
       pulseMat.color.copy(ringMat.color);
 
       if (Math.abs(H - rulerH) > 0.002) buildRuler(H);
-      controls.target.y += ((focusOn ? H * 0.9 : H * 0.52) - controls.target.y) * 0.1;
+      const lowCam = !!demoRef.current && SUPINE_DEMOS.has(demoRef.current);
+      controls.target.y += ((focusOn ? H * 0.9 : lowCam ? H * 0.16 : H * 0.52) - controls.target.y) * 0.1;
       if (distGoal !== null) {
         offset.subVectors(camera.position, controls.target);
         const d = offset.length(), next = d + (distGoal - d) * 0.12;
