@@ -71,6 +71,23 @@ npm run db:seed                                            # demo gym; needs SUP
 kept). When deploying, set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the host's environment
 variables. Never expose `SUPABASE_SERVICE_ROLE_KEY` to the browser.
 
+## Online payments
+
+Members pay for Premium (or renew it) and buy day passes online through **Xendit**'s hosted checkout
+(GCash, Maya, GrabPay, ShopeePay, cards, QR Ph). Currently in **test mode**: no real money moves.
+
+- `supabase/functions/create-checkout` creates the Xendit invoice and returns its checkout URL.
+- `supabase/functions/xendit-webhook` receives Xendit's "paid" callback (checks the callback token, then
+  re-reads the invoice from Xendit) and records the payment + 30 days of Premium.
+- `supabase/functions/confirm-checkout` does the same when the member returns, in case the callback is late.
+- Recording is idempotent (payment id `xi_<invoice id>`), so a payment is never counted twice.
+
+Setup: put a Xendit **test** secret key (`xnd_development_…`, Money-in write permission) in `.env.local`,
+then `npx supabase secrets set XENDIT_SECRET_KEY=… XENDIT_CALLBACK_TOKEN=…`. The callback URL is
+`https://<ref>.supabase.co/functions/v1/xendit-webhook` (registered with `POST /callback_urls/invoice`,
+which returns the callback token). Going live needs the gym's verified Xendit account, a
+`xnd_production_` key and `VITE_PAYMENTS_LIVE=true`. Without Supabase, the Pay buttons open a demo checkout.
+
 ## 3D body model
 
 The Tools page ("Body Lab") uses `public/models/human.glb`, the

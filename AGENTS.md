@@ -123,6 +123,21 @@ supabase/               migrations (schema + RLS), functions/manage-users, CLI c
 - Code style: TypeScript strict, function components + hooks, small helpers inline, comments only where
   the logic is not obvious (match the surrounding density). Two-space indent, single quotes.
 
+## Online payments (Xendit, test mode)
+
+- Client: `src/lib/payments.ts` (`startCheckout`, `confirmCheckout`, `applyPayment`, method labels) and
+  `pages/member/Upgrade.tsx` (Membership page: pay/renew online, day pass, payment history). Home shows a
+  renewal reminder in the last 7 days.
+- Server: `supabase/functions/create-checkout`, `confirm-checkout`, `xendit-webhook`, shared code in
+  `_shared/xendit.ts`. The webhook is deployed with `verify_jwt = false` (see `supabase/config.toml`) and
+  authenticates by `x-callback-token`, then re-reads the invoice from Xendit.
+- `applyPaid` (server) and `applyPayment` (client: front-desk renewals, offline demo) must stay in step:
+  payment record + `plan: 'monthly'` + `subscriptionEnd` = max(today, current end) + 30 days + pending
+  requests approved. Online payment ids are `xi_<invoice id>`; the insert's primary key makes it idempotent.
+- Members cannot write `payments` (row-level security); only the service role (functions) and staff can.
+- Secrets: `XENDIT_SECRET_KEY`, `XENDIT_CALLBACK_TOKEN` as Supabase function secrets (also in `.env.local`).
+  Test mode only (`xnd_development_`); PayMongo was the first choice but had paused sign-ups.
+
 ## Feature flags (hidden on purpose — do not "fix")
 
 - `SHOW_CLASSES = false` in `Shell.tsx`: the Classes menu button is hidden for every role; the routes and
@@ -184,8 +199,7 @@ crossed feet, collapsed shoulders, thin forearms, feet through the platform and 
 
 ## Known gaps / likely next work
 
-Online payments (PayMongo test mode first, for the pitch) and renewal
-reminders (GCash/Maya), push notifications, set/rep/weight workout logging with PRs, exercise library
+Push notifications (incl. renewal reminders), going live with Xendit (gym's verified account), set/rep/weight workout logging with PRs, exercise library
 with Body Lab demos, progress photos and measurements, class booking with waitlist (Classes UI is
-currently hidden), wearable sync (Health Connect / Apple Health), challenges/leaderboards, coach chat,
+currently hidden), wearable sync via Fitbit/Garmin/Strava cloud APIs (a PWA cannot read Health Connect / Apple Health), challenges/leaderboards, coach chat,
 an owner retention dashboard, and Philippine Data Privacy Act compliance (consent, export, deletion).
