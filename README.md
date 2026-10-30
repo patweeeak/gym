@@ -50,11 +50,26 @@ The step tracker uses motion sensors and GPS, which browsers only allow over **H
 
 ## Data / backend
 
-All reads and writes go through `src/lib/db.ts` (`useDB()` / `update()`). Right now it saves to the
-browser's localStorage with seeded demo data, so **data is per-device**. To make it a real multi-user
-online system, replace that module with a hosted backend (e.g. Supabase or Firebase: auth, a
-Postgres/Firestore database, and row-level security per role). Passwords must then be handled by the
-backend's auth, not stored in plain text as in this demo.
+All reads and writes go through `src/lib/db.ts` (`useDB()` / `update()`). It runs in one of two modes:
+
+- **Online (Supabase)** when `.env.local` has `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`: real
+  accounts (Supabase Auth), a Postgres database with row-level security per role, and live sync between
+  devices. Schema: `supabase/migrations/`; account creation/deletion: `supabase/functions/manage-users`.
+- **Offline demo** without those keys: everything is stored in the browser's localStorage with seeded
+  demo data (per device).
+
+Setting up a Supabase project (copy `.env.example` to `.env.local` and fill it in first):
+
+```bash
+npx supabase link --project-ref <ref> -p <db-password>
+npx supabase db push --linked -p <db-password>             # schema + access rules
+npx supabase functions deploy manage-users --use-api       # owner-only account management
+npm run db:seed                                            # demo gym; needs SUPABASE_SERVICE_ROLE_KEY
+```
+
+`npm run db:seed` wipes all accounts and records and reloads the demo gym (the gym name and prices are
+kept). When deploying, set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the host's environment
+variables. Never expose `SUPABASE_SERVICE_ROLE_KEY` to the browser.
 
 ## 3D body model
 

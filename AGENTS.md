@@ -24,6 +24,8 @@ Demo accounts (also chips on the login screen): `owner@gym.com / admin123`,
 ## Stack
 
 - React 18 + TypeScript (strict) + Vite 5, React Router 6, `vite-plugin-pwa` (auto-update service worker).
+- Supabase (Auth, Postgres with row-level security, realtime, edge functions) via `@supabase/supabase-js`;
+  the app also runs without it (local mode).
 - three.js 0.169 for the Body Lab only (lazy-loaded chunk).
 - lucide-react for icons. No UI framework, no CSS framework, no state library, no test framework.
 - Fonts: Bebas Neue (numbers/headlines, class `num`) + Space Grotesk (body), from Google Fonts.
@@ -47,7 +49,10 @@ src/
   main.tsx              router + AuthProvider + service worker + global press effects
   App.tsx               all routes; RequireRole guards each area, PremiumOnly gates premium pages
   lib/
-    db.ts               THE data store (see below) + demo seed
+    db.ts               THE data store (see below): local or Supabase mode
+    rows.ts             DB object ↔ Supabase rows mapping
+    seed.ts             demo data (local mode and `npm run db:seed`)
+    supabase.ts         Supabase client (null when not configured)
     types.ts            every data type; DB is the whole persisted state
     auth.tsx            session (localStorage 'ironpulse-session' = user id), useAuth/useMe/homeFor
     utils.ts            dates (dayKey = 'YYYY-MM-DD'), formatting, money(), isPremium, daysLeft, METRIC colours
@@ -71,19 +76,35 @@ public/
   models/anims/*.glb    Mixamo animation clips (skeleton only)
   icon.svg, icon-192.png, icon-512.png   app icon (flexed biceps on an orange disc)
 scripts/hair/           offline Python scripts that baked public/models/hair (not part of the build)
+scripts/supabase-seed.ts  loads the demo gym into Supabase (`npm run db:seed`)
+supabase/               migrations (schema + RLS), functions/manage-users, CLI config
 ```
 
 ## Data: `src/lib/db.ts`
 
 - All reads go through `useDB()` (a `useSyncExternalStore` hook) or `getDB()`; **all writes go through
-  `update((d) => { ...mutate d... })`**, which clones the state, persists it and notifies subscribers.
+  `update((d) => { ...mutate d... })`**, which clones the state, applies it, and persists it.
   Never mutate the object returned by `useDB()`.
-- Persistence is **localStorage** under `ironpulse-db-v1`, seeded with demo data on first run. Data is
-  therefore per device/browser. Tabs stay in sync via the `storage` event.
-- Swapping in a real backend (Supabase/Firebase/own API) means re-implementing this module behind the
-  same `useDB`/`update` surface. Passwords are stored in plain text — demo only; a backend must hash them
-  and use real auth.
-- `resetDemo()` re-seeds everything **except `settings.gymName`** (the owner's chosen name survives).
+- **Two modes**, chosen by whether `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` are set (`remote` flag):
+  - *Local*: the whole DB in localStorage (`ironpulse-db-v1`), seeded with `seed()` from `seed.ts`.
+  - *Remote (Supabase)*: after sign-in `loadRemote()` loads everything the user may see; each `update()`
+    is diffed (`pushChanges`) into upserts/deletes/profile updates; realtime changes from other devices
+    are applied with `applyRow`. Writes run in order; a failed write toasts and reloads from the server.
+- **Accounts are not created or deleted with `update()`**: use `createAccount()` / `deleteAccount()`
+  (remote mode calls the `manage-users` edge function, owner only). Editing an existing user's fields
+  through `update()` is fine (it becomes a `profiles` update).
+- Supabase schema (`supabase/migrations/`): `settings` (one row, readable before sign-in), `profiles`
+  (one per auth user; `User` minus the password), and `records(collection, id, user_id, coach_id, doc)`
+  where `doc` is the item exactly as the app uses it. `src/lib/rows.ts` maps between the DB object and
+  rows; keep it in sync when adding a collection (add it to `ARRAY_COLS`/`MAP_COLS` and `rowOf`).
+- **Row-level security is the real permission system**: members read their own rows plus gym-wide ones
+  (`user_id is null`) and only staff profiles; staff read everything; `can_write()` lists which
+  collections each role may write; a trigger stops members changing their own plan/role/expiry. A new
+  collection needs a decision in `can_write()` (new migration file, never edit an applied one).
+- Secrets live in `.env.local` (git-ignored): `SUPABASE_SERVICE_ROLE_KEY` is only for
+  `npm run db:seed`, never `VITE_`-prefixed. `npm run db:seed` resets the online demo; in remote mode
+  the in-app "Reset demo data" button is hidden.
+- `resetDemo()` (local mode) re-seeds everything **except `settings.gymName`**.
 - `document.title` follows `settings.gymName`. The PWA manifest name (`vite.config.ts`) is static.
 - If you add a field to a persisted type, make it optional or default it when read: existing users
   already have saved data without it (see how `Tools.tsx` strips the removed `scene` field).
@@ -163,7 +184,7 @@ crossed feet, collapsed shoulders, thin forearms, feet through the platform and 
 
 ## Known gaps / likely next work
 
-Real backend + auth (biggest gap; everything else depends on it), online payments and renewal
+Online payments (PayMongo test mode first, for the pitch) and renewal
 reminders (GCash/Maya), push notifications, set/rep/weight workout logging with PRs, exercise library
 with Body Lab demos, progress photos and measurements, class booking with waitlist (Classes UI is
 currently hidden), wearable sync (Health Connect / Apple Health), challenges/leaderboards, coach chat,
