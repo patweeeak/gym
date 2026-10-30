@@ -2,7 +2,7 @@ import { toast } from '../../lib/fx';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Crown, Lock, Mail, Phone, Plus, RefreshCw, Search, Trash2, User as UserIcon, Users } from 'lucide-react';
-import { update, useDB } from '../../lib/db';
+import { createAccount, deleteAccount, update, useDB } from '../../lib/db';
 import type { Plan, User } from '../../lib/types';
 import { addDays, daysLeft, dayKey, fmtDate, memberStatus, randomColor, uid } from '../../lib/utils';
 import { Avatar, Badge, Button, Card, Empty, Input, Modal, PageHeader, Segmented, Select } from '../../components/ui';
@@ -76,18 +76,24 @@ function MemberForm({ open, onClose, instructors }: { open: boolean; onClose: ()
   const db = useDB();
   const [f, setF] = useState({ name: '', email: '', password: '', phone: '', plan: 'basic' as Plan, instructorId: '' });
   const [err, setErr] = useState('');
-  const save = () => {
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
     if (!f.name.trim() || !f.email.trim() || f.password.length < 6) return setErr('Name, email and a 6+ character password are required.');
     if (db.users.some((u) => u.email.toLowerCase() === f.email.toLowerCase())) return setErr('That email is already registered.');
-    const id = uid();
-    update((d) => {
-      d.users.push({
-        id, role: 'member', name: f.name.trim(), email: f.email.trim(), password: f.password, phone: f.phone, color: randomColor(),
-        createdAt: new Date().toISOString(), plan: f.plan, instructorId: f.instructorId || undefined,
+    setBusy(true);
+    let id: string;
+    try {
+      id = await createAccount({
+        role: 'member', name: f.name.trim(), email: f.email.trim(), password: f.password, phone: f.phone, color: randomColor(),
+        plan: f.plan, instructorId: f.instructorId || undefined,
         subscriptionEnd: f.plan === 'monthly' ? dayKey(addDays(new Date(), 30)) : undefined,
       });
-      if (f.plan === 'monthly') d.payments.push({ id: uid(), userId: id, amount: d.settings.monthlyPrice, date: dayKey(), kind: 'monthly' });
-    });
+    } catch (e) {
+      setBusy(false);
+      return setErr((e as Error).message);
+    }
+    setBusy(false);
+    if (f.plan === 'monthly') update((d) => { d.payments.push({ id: uid(), userId: id, amount: d.settings.monthlyPrice, date: dayKey(), kind: 'monthly' }); });
     toast(`${f.name.trim()} registered`);
     setF({ name: '', email: '', password: '', phone: '', plan: 'basic', instructorId: '' });
     setErr('');
@@ -95,7 +101,7 @@ function MemberForm({ open, onClose, instructors }: { open: boolean; onClose: ()
   };
   return (
     <Modal open={open} onClose={onClose} title="Register member"
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="accent" onClick={save}>Create account</Button></>}>
+      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="accent" onClick={save} disabled={busy}>{busy ? 'Creating…' : 'Create account'}</Button></>}>
       <div className="col gap-lg">
         <Input label="Full name" icon={<UserIcon size={16} />} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
         <Input label="Email" type="email" icon={<Mail size={16} />} value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} />
@@ -124,10 +130,10 @@ function MemberForm({ open, onClose, instructors }: { open: boolean; onClose: ()
 function EditMember({ user, onClose, instructors, onOpen }: { user: User; onClose: () => void; instructors: User[]; onOpen: () => void }) {
   const st = memberStatus(user);
   const set = (patch: Partial<User>) => { update((d) => { Object.assign(d.users.find((u) => u.id === user.id)!, patch); }); toast('Member updated'); };
-  const remove = () => {
+  const remove = async () => {
     if (!confirm(`Delete ${user.name}? This removes all their data.`)) return;
+    try { await deleteAccount(user.id); } catch (e) { return toast((e as Error).message, 'error'); }
     update((d) => {
-      d.users = d.users.filter((u) => u.id !== user.id);
       d.classes.forEach((c) => { c.attendees = c.attendees.filter((a) => a !== user.id); });
     });
     toast(`${user.name} deleted`, 'info');

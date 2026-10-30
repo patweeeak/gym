@@ -19,10 +19,13 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [pw, setPw] = useState('');
   const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
-    setErr(login(email, pw));
+    setBusy(true);
+    setErr(await login(email, pw));
+    setBusy(false);
   };
 
   return (
@@ -42,7 +45,7 @@ export default function Login() {
           <Input label="Email" type="email" icon={<Mail size={17} />} placeholder="you@email.com" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
           <Input label="Password" type="password" icon={<Lock size={17} />} placeholder="••••••••" value={pw} onChange={(e) => setPw(e.target.value)} required autoComplete="current-password" />
           {err && <div className="small bold" style={{ color: 'var(--red)' }}>{err}</div>}
-          <Button variant="accent" block type="submit" style={{ padding: 15 }}>Sign in</Button>
+          <Button variant="accent" block type="submit" style={{ padding: 15 }} disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</Button>
           <p className="xs muted center">Accounts are created by the gym. Ask the front desk to register you.</p>
         </form>
 

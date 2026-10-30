@@ -1,7 +1,7 @@
 import { toast } from '../../lib/fx';
 import { useState } from 'react';
 import { Building2, RotateCcw, Save } from 'lucide-react';
-import { resetDemo, update, useDB } from '../../lib/db';
+import { remote, resetDemo, update, useDB } from '../../lib/db';
 import { Button, Card, Input, PageHeader } from '../../components/ui';
 
 export default function AdminSettings() {
@@ -34,7 +34,7 @@ export default function AdminSettings() {
           </div>
         </div>
       </Card>
-      <Card>
+      {!remote && <Card>
         <div className="row between wrap">
           <div>
             <div className="bold">Reset demo data</div>
@@ -42,7 +42,7 @@ export default function AdminSettings() {
           </div>
           <Button variant="danger" icon={<RotateCcw size={15} />} onClick={() => confirm('Reset all data to the demo state?') && resetDemo()}>Reset</Button>
         </div>
-      </Card>
+      </Card>}
     </div>
   );
 }

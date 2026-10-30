@@ -1,8 +1,8 @@
 import { toast } from '../../lib/fx';
 import { useState } from 'react';
 import { CalendarDays, Dumbbell, Lock, Mail, Phone, Plus, Trash2, User as UserIcon, UserCog, Users } from 'lucide-react';
-import { update, useDB } from '../../lib/db';
-import { randomColor, uid } from '../../lib/utils';
+import { createAccount, deleteAccount, update, useDB } from '../../lib/db';
+import { randomColor } from '../../lib/utils';
 import { Avatar, Badge, Button, Card, Empty, IconButton, Input, Modal, PageHeader } from '../../components/ui';
 
 export default function AdminInstructors() {
@@ -12,23 +12,29 @@ export default function AdminInstructors() {
   const [err, setErr] = useState('');
   const coaches = db.users.filter((u) => u.role === 'instructor');
 
-  const save = () => {
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
     if (!f.name.trim() || !f.email.trim() || f.password.length < 6) return setErr('Name, email and a 6+ character password are required.');
     if (db.users.some((u) => u.email.toLowerCase() === f.email.toLowerCase())) return setErr('That email is already registered.');
-    update((d) => {
-      d.users.push({ id: uid(), role: 'instructor', name: f.name.trim(), email: f.email.trim(), password: f.password, phone: f.phone,
-        specialty: f.specialty, color: randomColor(), createdAt: new Date().toISOString() });
-    });
+    setBusy(true);
+    try {
+      await createAccount({ role: 'instructor', name: f.name.trim(), email: f.email.trim(), password: f.password, phone: f.phone,
+        specialty: f.specialty, color: randomColor() });
+    } catch (e) {
+      setBusy(false);
+      return setErr((e as Error).message);
+    }
+    setBusy(false);
     toast(`${f.name.trim()} added as instructor`);
     setF({ name: '', email: '', password: '', phone: '', specialty: '' });
     setErr('');
     setOpen(false);
   };
 
-  const remove = (id: string, name: string) => {
+  const remove = async (id: string, name: string) => {
     if (!confirm(`Remove ${name}? Their members will be unassigned and classes deleted.`)) return;
+    try { await deleteAccount(id); } catch (e) { return toast((e as Error).message, 'error'); }
     update((d) => {
-      d.users = d.users.filter((u) => u.id !== id);
       d.users.forEach((u) => { if (u.instructorId === id) u.instructorId = undefined; });
       d.classes = d.classes.filter((c) => c.instructorId !== id);
     });
@@ -69,7 +75,7 @@ export default function AdminInstructors() {
       </div>
 
       <Modal open={open} onClose={() => setOpen(false)} title="Add instructor"
-        footer={<><Button onClick={() => setOpen(false)}>Cancel</Button><Button variant="accent" onClick={save}>Create account</Button></>}>
+        footer={<><Button onClick={() => setOpen(false)}>Cancel</Button><Button variant="accent" onClick={save} disabled={busy}>{busy ? 'Creating…' : 'Create account'}</Button></>}>
         <div className="col gap-lg">
           <Input label="Full name" icon={<UserIcon size={16} />} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Coach …" />
           <Input label="Email" type="email" icon={<Mail size={16} />} value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} />

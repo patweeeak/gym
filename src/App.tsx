@@ -39,7 +39,8 @@ function PremiumOnly({ children, feature }: { children: ReactNode; feature: stri
 }
 
 export default function App() {
-  const { user } = useAuth();
+  const { user, ready } = useAuth();
+  if (!ready) return <div className="center muted small" style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center' }}>Loading…</div>;
   return (
     <Routes>
       <Route path="/login" element={user ? <Navigate to={homeFor(user)} replace /> : <Login />} />

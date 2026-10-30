@@ -4,3 +4,8 @@ dev-dist
 
 # raw Mixamo downloads (not for redistribution; optimized copies live in public/models)
 assets-src/
+
+# Supabase keys (see .env.example)
+.env.local
+.env*.local
+supabase/.temp/
