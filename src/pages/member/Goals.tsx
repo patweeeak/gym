@@ -8,6 +8,7 @@ import { METRIC, bmi, bmiLabel, dayKey, daysBetween, fmtDate, uid } from '../../
 import { AnimatedNumber, Badge, Button, Card, Empty, Input, Modal, PageHeader, Progress, Ring } from '../../components/ui';
 import { LineChart } from '../../components/charts';
 import GoalEditor, { GOAL_TYPES } from '../../components/GoalEditor';
+import BodyProgress from '../../components/BodyProgress';
 
 export default function Goals() {
   const me = useMe();
@@ -123,6 +124,8 @@ export default function Goals() {
         </div>
         {g.note && <div className="small muted" style={{ marginTop: 18 }}>💬 <i>"{g.note}"</i></div>}
       </Card>
+
+      <BodyProgress />
 
       <GoalEditor userId={me.id} open={edit} onClose={() => setEdit(false)} />
       <Modal open={logOpen} onClose={() => setLogOpen(false)} title="Log today's weight"
