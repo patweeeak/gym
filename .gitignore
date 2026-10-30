@@ -1,0 +1,6 @@
+node_modules
+dist
+dev-dist
+
+# raw Mixamo downloads (not for redistribution; optimized copies live in public/models)
+assets-src/
