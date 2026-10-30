@@ -279,6 +279,8 @@ input::placeholder, textarea::placeholder { color: var(--faint); }
 }
 
 /* ---------- animations ---------- */
+.spin { animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 @keyframes fade { from { opacity: 0; } }
 @keyframes pop { from { opacity: 0; transform: scale(0.92); } }
 @keyframes sheet { from { transform: translateY(100%); } }

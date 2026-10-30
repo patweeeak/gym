@@ -1,22 +1,15 @@
+import { applyPayment } from '../../lib/payments';
 import { toast } from '../../lib/fx';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, Check, ClipboardCheck, Crown, RefreshCw, TrendingUp, UserCog, Users, X } from 'lucide-react';
 import { useMe } from '../../lib/auth';
 import { update, useDB } from '../../lib/db';
-import { DAYS_LONG, METRIC, MONTHS, addDays, daysLeft, dayKey, fmtTime, greeting, isPremium, money, parseDay, relTime, uid } from '../../lib/utils';
+import { DAYS_LONG, METRIC, MONTHS, daysLeft, dayKey, fmtTime, greeting, isPremium, money, relTime } from '../../lib/utils';
 import { AnimatedNumber, Avatar, Badge, Button, Card, Empty, PageHeader, Ring, Stat } from '../../components/ui';
 import { BarChart } from '../../components/charts';
 
 export function renewMembership(userId: string) {
-  update((d) => {
-    const u = d.users.find((x) => x.id === userId)!;
-    const today = dayKey();
-    const base = u.subscriptionEnd && u.subscriptionEnd >= today ? parseDay(u.subscriptionEnd) : new Date();
-    u.plan = 'monthly';
-    u.subscriptionEnd = dayKey(addDays(base, 30));
-    d.payments.push({ id: uid(), userId, amount: d.settings.monthlyPrice, date: today, kind: 'monthly' });
-    d.requests.forEach((r) => { if (r.userId === userId && r.status === 'pending') r.status = 'approved'; });
-  });
+  update((d) => applyPayment(d, userId, 'monthly'));
   toast('Membership active for 30 more days 👑');
 }
 

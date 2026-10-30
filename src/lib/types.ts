@@ -66,7 +66,11 @@ export interface GymClass {
 
 export interface Announcement { id: string; title: string; body: string; createdAt: string; authorId: string }
 export interface CheckIn { id: string; userId: string; at: string; dayPass?: boolean }
-export interface Payment { id: string; userId: string; amount: number; date: string; kind: 'monthly' | 'daypass' }
+export interface Payment {
+  id: string; userId: string; amount: number; date: string; kind: 'monthly' | 'daypass';
+  /** set for online payments: 'gcash' | 'paymaya' | 'card' | 'qrph' …, and the PayMongo payment id */
+  method?: string; ref?: string; online?: boolean;
+}
 export interface UpgradeRequest { id: string; userId: string; createdAt: string; status: 'pending' | 'approved' | 'declined' }
 export interface CoachNote { id: string; memberId: string; instructorId: string; text: string; createdAt: string }
 

@@ -117,7 +117,7 @@ export async function deleteAccount(id: string) {
   }
 }
 
-async function fnError(error: unknown, data: unknown) {
+export async function fnError(error: unknown, data: unknown) {
   const ctx = (error as { context?: Response } | null)?.context;
   if (ctx && typeof ctx.json === 'function') {
     try { const b = await ctx.json(); if (b?.error) return b.error as string; } catch { /* not JSON */ }

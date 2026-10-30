@@ -57,6 +57,19 @@ function PremiumHome() {
         </div>
       </div>
 
+      {left <= 7 && (
+        <Card className="row wrap between" onClick={() => nav('/app/upgrade')}>
+          <div className="row">
+            <div className="icon-btn" style={{ color: left <= 3 ? 'var(--red)' : 'var(--yellow)' }}><Crown size={20} /></div>
+            <div>
+              <div className="heavy">{left <= 0 ? 'Your membership ends today' : `Your membership ends in ${left} day${left === 1 ? '' : 's'}`}</div>
+              <div className="small muted">Renew online with GCash, Maya or card to keep your plans and tracking.</div>
+            </div>
+          </div>
+          <Button variant="accent" icon={<Crown size={15} />}>Renew online</Button>
+        </Card>
+      )}
+
       <div className="grid g3">
         <Card className="span2 hero-steps" onClick={() => nav('/app/activity')}>
           <div style={{ minWidth: 0 }}>
