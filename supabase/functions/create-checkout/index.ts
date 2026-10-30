@@ -1,5 +1,5 @@
-// Starts a PayMongo checkout for the signed-in member: a month of Premium, or one day pass.
-import { adminClient, caller, cors, paymongo, reply } from '../_shared/paymongo.ts';
+// Starts a Xendit hosted checkout (invoice) for the signed-in member: a month of Premium, or one day pass.
+import { adminClient, caller, cors, reply, xendit } from '../_shared/xendit.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
@@ -18,26 +18,23 @@ Deno.serve(async (req) => {
     const name = kind === 'monthly' ? `${s!.gym_name} Premium — 30 days` : `${s!.gym_name} day pass`;
     const back = (state: string) => `${returnUrl}${returnUrl.includes('?') ? '&' : '?'}checkout=${state}`;
 
-    const res = await paymongo('/checkout_sessions', {
+    const inv = await xendit('/v2/invoices', {
       method: 'POST',
       body: {
-        data: {
-          attributes: {
-            line_items: [{ name, amount: Math.round(price * 100), currency: 'PHP', quantity: 1 }],
-            payment_method_types: ['gcash', 'paymaya', 'card', 'qrph'],
-            description: name,
-            billing: { name: me.name, email: me.email },
-            success_url: back('success'),
-            cancel_url: back('cancelled'),
-            send_email_receipt: false,
-            show_description: true,
-            show_line_items: true,
-            metadata: { user_id: me.id, kind },
-          },
-        },
+        external_id: `gym|${me.id}|${kind}|${Date.now()}`,
+        amount: price,
+        currency: 'PHP',
+        description: name,
+        payer_email: me.email,
+        customer: { given_names: me.name, email: me.email },
+        items: [{ name, quantity: 1, price }],
+        success_redirect_url: back('success'),
+        failure_redirect_url: back('cancelled'),
+        invoice_duration: 3600,
+        metadata: { user_id: me.id, kind },
       },
     });
-    return reply({ id: res.data.id, url: res.data.attributes.checkout_url });
+    return reply({ id: inv.id, url: inv.invoice_url });
   } catch (e) {
     return reply({ error: (e as Error).message }, 400);
   }

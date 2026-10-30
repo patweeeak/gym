@@ -47,7 +47,7 @@ export default function Upgrade() {
     try { await startCheckout(kind); } catch (e) { toast((e as Error).message, 'error'); setBusy(null); }
   };
 
-  // back from PayMongo: confirm the payment (retrying briefly while it is still processing)
+  // back from the checkout page: confirm the payment (retrying briefly while it is still processing)
   const handled = useRef(false);
   useEffect(() => {
     const state = params.get('checkout');
@@ -171,14 +171,14 @@ export default function Upgrade() {
   );
 }
 
-/** Offline demo mode: a stand-in for PayMongo's checkout page. */
+/** Offline demo mode: a stand-in for Xendit's checkout page. */
 function DemoCheckout({ kind, amount, onClose, onPaid }: { kind: PayKind; amount: string; onClose: () => void; onPaid: (method: string) => void }) {
   const [method, setMethod] = useState('gcash');
   return (
     <Modal open onClose={onClose} title="Demo checkout"
       footer={<><Button onClick={onClose}>Cancel</Button><Button variant="accent" onClick={() => onPaid(method)}>Pay {amount}</Button></>}>
       <div className="col gap-lg">
-        <div className="small muted">Offline demo — no payment is made. With the online mode this opens PayMongo's secure checkout.</div>
+        <div className="small muted">Offline demo — no payment is made. With the online mode this opens Xendit's secure checkout.</div>
         <div className="bold">{kind === 'monthly' ? 'Premium · 30 days' : 'Day pass'} · {amount}</div>
         <div className="chip-row">
           {PAY_METHODS.map((m) => <button key={m.value} className={method === m.value ? 'chip on' : 'chip'} onClick={() => setMethod(m.value)}>{m.label}</button>)}

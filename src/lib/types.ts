@@ -68,7 +68,7 @@ export interface Announcement { id: string; title: string; body: string; created
 export interface CheckIn { id: string; userId: string; at: string; dayPass?: boolean }
 export interface Payment {
   id: string; userId: string; amount: number; date: string; kind: 'monthly' | 'daypass';
-  /** set for online payments: 'gcash' | 'paymaya' | 'card' | 'qrph' …, and the PayMongo payment id */
+  /** set for online payments: 'gcash' | 'paymaya' | 'credit_card' | 'qrph' …, and the Xendit invoice id */
   method?: string; ref?: string; online?: boolean;
 }
 export interface UpgradeRequest { id: string; userId: string; createdAt: string; status: 'pending' | 'approved' | 'declined' }

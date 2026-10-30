@@ -1,6 +1,6 @@
 /*
- * Online payments through PayMongo Checkout (GCash, Maya, cards, QR Ph).
- * The member is sent to PayMongo's hosted page; the paymongo-webhook function records the payment, and
+ * Online payments through Xendit's hosted checkout (GCash, Maya, GrabPay, ShopeePay, cards, QR Ph).
+ * The member is sent to Xendit's page; the xendit-webhook function records the payment, and
  * confirmCheckout() double-checks when they return. Without Supabase (local mode) payments are simulated.
  */
 import { fnError, update } from './db';
@@ -10,15 +10,18 @@ import { addDays, dayKey, parseDay, uid } from './utils';
 
 export type PayKind = 'monthly' | 'daypass';
 export const PAY_METHODS = [
-  { value: 'gcash', label: 'GCash' }, { value: 'paymaya', label: 'Maya' }, { value: 'card', label: 'Card' }, { value: 'qrph', label: 'QR Ph' },
+  { value: 'gcash', label: 'GCash' }, { value: 'paymaya', label: 'Maya' }, { value: 'grabpay', label: 'GrabPay' },
+  { value: 'shopeepay', label: 'ShopeePay' }, { value: 'credit_card', label: 'Card' }, { value: 'qrph', label: 'QR Ph' },
 ];
-export const methodLabel = (m?: string) => PAY_METHODS.find((x) => x.value === m)?.label ?? (m ? m[0].toUpperCase() + m.slice(1) : 'Front desk');
-/** PayMongo test mode: no real money moves (switch off with VITE_PAYMENTS_LIVE=true once the gym is verified). */
+const LABELS: Record<string, string> = { card: 'Card', qr_code: 'QR Ph', ewallet: 'E-wallet', direct_debit: 'Bank debit', bank_transfer: 'Bank transfer' };
+export const methodLabel = (m?: string) =>
+  PAY_METHODS.find((x) => x.value === m)?.label ?? (m && LABELS[m]) ?? (m ? m.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()) : 'Front desk');
+/** Xendit test mode: no real money moves (switch off with VITE_PAYMENTS_LIVE=true once the gym is verified). */
 export const paymentsTestMode = import.meta.env.VITE_PAYMENTS_LIVE !== 'true';
 
 const PENDING = 'ironpulse-checkout';
 
-/** Opens PayMongo's checkout page for this payment (redirects away from the app). */
+/** Opens Xendit's checkout page for this payment (redirects away from the app). */
 export async function startCheckout(kind: PayKind) {
   if (!supabase) throw new Error('Online payments need the online (Supabase) mode.');
   const returnUrl = `${location.origin}/app/upgrade`;
@@ -28,7 +31,7 @@ export async function startCheckout(kind: PayKind) {
   location.assign(data.url);
 }
 
-/** After returning from PayMongo: makes sure the payment is recorded. */
+/** After returning from the checkout page: makes sure the payment is recorded. */
 export async function confirmCheckout(): Promise<{ status: 'paid' | 'pending' | 'expired'; kind?: PayKind } | null> {
   const id = sessionStorage.getItem(PENDING);
   if (!supabase || !id) return null;

@@ -415,6 +415,6 @@ enabled = true
 # and column/key alignment. Set to "null" to emit raw, unformatted SQL.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":180,\"commaStyle\":\"trailing\"}"
 
-# PayMongo calls the webhook without a Supabase session; it is authenticated by its signature.
-[functions.paymongo-webhook]
+# Xendit calls the webhook without a Supabase session; it is authenticated by its callback token.
+[functions.xendit-webhook]
 verify_jwt = false
